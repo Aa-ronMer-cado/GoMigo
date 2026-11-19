@@ -1,0 +1,11 @@
+name: gomigo_design_system
+description: GoMigo theme and system UI styling.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter

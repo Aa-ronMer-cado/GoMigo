@@ -1,0 +1,17 @@
+name: gomigo_shared_widgets
+description: Shared GoMigo widgets and brand artwork.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_svg: ^2.0.17
+
+flutter:
+  assets:
+    - assets/figma/start_frame1.svg
+    - assets/figma/start_frame2.svg

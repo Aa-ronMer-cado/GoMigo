@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "GoMigo Traveler",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/apps/traveler",
+      "program": "${workspaceFolder}/apps/traveler/lib/main.dart"
+    },
+    {
+      "name": "GoMigo Amigo",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/apps/amigo",
+      "program": "${workspaceFolder}/apps/amigo/lib/main.dart"
+    }
+  ]
+}

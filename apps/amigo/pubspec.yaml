@@ -1,0 +1,23 @@
+name: amigo
+description: The GoMigo app for local companions.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  gomigo_design_system:
+    path: ../../packages/design_system
+  gomigo_shared_widgets:
+    path: ../../packages/shared_widgets
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
