@@ -13,6 +13,7 @@ dependencies:
     path: ../../packages/design_system
   gomigo_shared_widgets:
     path: ../../packages/shared_widgets
+  flutter_svg: ^2.0.17
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -21,3 +22,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/figma/

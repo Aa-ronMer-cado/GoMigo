@@ -7,5 +7,6 @@ import 'navigation/amigo_app.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(goMigoSystemUiOverlayStyle);
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const GoMigoAmigoApp());
 }
