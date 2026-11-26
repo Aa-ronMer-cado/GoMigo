@@ -1,89 +1,125 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
-class LocationScreen extends StatelessWidget {
+import '../../navigation/traveler_ui.dart';
+
+class LocationScreen extends StatefulWidget {
   const LocationScreen({super.key, required this.onContinue});
-
   final VoidCallback onContinue;
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final height = constraints.maxHeight;
-      final width = constraints.maxWidth;
+  State<LocationScreen> createState() => _LocationScreenState();
+}
+
+class _LocationScreenState extends State<LocationScreen> {
+  bool _busy = false;
+  String? _notice;
+
+  Future<void> _request() async {
+    setState(() {
+      _busy = true;
+      _notice = null;
+    });
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted)
+          setState(
+            () => _notice =
+                'Location services are off. You can continue and turn them on later.',
+          );
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied)
+        permission = await Geolocator.requestPermission();
+      if (!mounted) return;
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        widget.onContinue();
+      } else {
+        setState(
+          () => _notice =
+              'Location permission is off. You can continue and enable it when you need the map.',
+        );
+      }
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => _notice =
+              'Location is unavailable on this device. You can continue.',
+        );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
       return Stack(
         fit: StackFit.expand,
         children: [
-          const ColoredBox(color: Color(0xFFFAEFE5)),
           Positioned(
-            top: height * 0.56,
+            top: constraints.maxHeight * .55,
             left: 0,
             right: 0,
             bottom: 0,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFC6D4AE),
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                color: travelerSage,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(101)),
               ),
             ),
           ),
-          Positioned(
-            top: height * 0.405,
-            left: (width - 286) / 2,
-            child: Transform.rotate(
-              angle: 0.031,
-              child: Image.asset(
-                'assets/figma/location_travelers_mystery_map_icon_png1.png',
-                width: 286,
-                height: 274,
-                fit: BoxFit.contain,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(26, 30, 26, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Transform.rotate(
+                    angle: .031,
+                    child: Image.asset(
+                      'assets/figma/location_travelers_mystery_map_icon_png1.png',
+                      width: 286,
+                      height: (constraints.maxHeight * .33)
+                          .clamp(130, 274)
+                          .toDouble(),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  const Text(
+                    'Use your location to find a meetup',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: travelerInk,
+                      fontSize: 23,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _notice ??
+                        'You can enable location now or when you use the map.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 18),
+                  TravelerButton(
+                    _busy ? 'Checking…' : 'Turn on location service',
+                    _busy ? null : _request,
+                  ),
+                  TextButton(
+                    onPressed: _busy ? null : widget.onContinue,
+                    child: const Text('Continue without location'),
+                  ),
+                ],
               ),
-            ),
-          ),
-          Positioned(
-            top: height * 0.758,
-            left: 23,
-            right: 23,
-            child: const Text(
-              'We need your location so you can\nuse the app properly.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF4D2F24),
-                fontSize: 21.8,
-                height: 1.38,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          Positioned(
-            top: height * 0.827,
-            left: 18,
-            right: 18,
-            child: const Text(
-              'Can you please turn on your location service?',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF323232), fontSize: 15),
-            ),
-          ),
-          Positioned(
-            left: 57,
-            right: 57,
-            bottom: 43,
-            height: 52,
-            child: FilledButton(
-              onPressed: onContinue,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFA64E31),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                textStyle:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
-              child: const Text('Turn on location service'),
             ),
           ),
         ],
       );
-    });
-  }
+    },
+  );
 }

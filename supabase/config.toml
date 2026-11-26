@@ -1,0 +1,14 @@
+project_id = "gomigo"
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth.email]
+enable_confirmations = true
+
+[functions.paymongo-checkout]
+verify_jwt = false
+
+[functions.paymongo-webhook]
+verify_jwt = false
