@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take pictures of both sides of your test ID for review.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose test ID photos to submit for review.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Pin a meetup and use location sharing or trip recording when you turn those features on.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

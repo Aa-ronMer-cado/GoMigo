@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../navigation/traveler_ui.dart';
+
 class WalkthroughScreen extends StatefulWidget {
   const WalkthroughScreen({super.key, required this.onContinue});
-
   final VoidCallback onContinue;
 
   @override
@@ -13,29 +14,29 @@ class WalkthroughScreen extends StatefulWidget {
 class _WalkthroughScreenState extends State<WalkthroughScreen> {
   int _page = 0;
 
-  static const _titles = [
-    'Find a Local Buddy',
-    'Book and Explore',
-    'Travel with Confidence',
-  ];
-  static const _descriptions = [
-    'Connect with verified local Amigos who can join you on your trip, your way',
-    'Choose your preferred date, plan your activities, and explore hidden gems with you Amigo',
-    'All Amigos are verified so you can enjoy a safer and more reliable experience.',
-  ];
-  static const _artworks = [
-    'assets/figma/walkthrough_rectangle12.png',
-    'assets/figma/walkthrough_book.png',
-    'assets/figma/walkthrough_confidence.png',
-  ];
-  static const _indicators = [
-    'assets/figma/walkthrough_frame16.svg',
-    'assets/figma/walkthrough_dots2.svg',
-    'assets/figma/walkthrough_dots3.svg',
+  static const _slides = [
+    (
+      'Find a Local Buddy',
+      'Connect with verified local Amigos who can join you on your trip, your way.',
+      'walkthrough_rectangle12.png',
+      'walkthrough_frame16.svg',
+    ),
+    (
+      'Book and Explore',
+      'Choose your date, make your own plans, and explore with your Amigo.',
+      'walkthrough_book.png',
+      'walkthrough_dots2.svg',
+    ),
+    (
+      'Travel with Confidence',
+      'Check your Amigo’s profile and reviews before booking.',
+      'walkthrough_confidence.png',
+      'walkthrough_dots3.svg',
+    ),
   ];
 
   void _next() {
-    if (_page == 2) {
+    if (_page == _slides.length - 1) {
       widget.onContinue();
     } else {
       setState(() => _page += 1);
@@ -44,98 +45,113 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final gap = width * 0.092;
-      final buttonWidth = width < 347 ? (width - gap) / 2 : 155.0;
-      final buttonRowWidth = buttonWidth * 2 + gap;
-      return ColoredBox(
-        color: const Color(0xFFFAEFE5),
-        child: Column(
-          children: [
-            const SizedBox(height: 120),
-            SizedBox(
-              width: 264,
-              height: 295,
-              child: Image.asset(_artworks[_page], fit: BoxFit.contain),
-            ),
-            const SizedBox(height: 31),
-            Text(
-              _titles[_page],
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF4C2E24),
-                fontSize: 32,
-                height: 1.25,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 35),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 27),
-              child: Text(
-                _descriptions[_page],
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: Color(0xFF4C2E24), fontSize: 16, height: 1.5),
-              ),
-            ),
-            const SizedBox(height: 35),
-            SizedBox(
-              width: 93,
-              height: 39,
-              child: SvgPicture.asset(_indicators[_page]),
-            ),
-            const Spacer(),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                  horizontal: (width - buttonRowWidth) / 2),
-              child: Row(
+    final (title, description, art, indicator) = _slides[_page];
+    final last = _page == _slides.length - 1;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            22,
+            (constraints.maxHeight * .137).clamp(35, 120).toDouble(),
+            22,
+            24,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 362),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    width: buttonWidth,
-                    child: TextButton(
-                      onPressed: widget.onContinue,
-                      style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF4A2E26)),
-                      child: const Text('Skip',
-                          style: TextStyle(fontWeight: FontWeight.w800)),
+                  Image.asset(
+                    'assets/figma/$art',
+                    width: 264,
+                    height: 295,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  ),
+                  const SizedBox(height: 31),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: travelerInk,
+                      fontSize: 32,
+                      height: 1.25,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  SizedBox(width: gap),
-                  SizedBox(
-                    width: buttonWidth,
-                    child: OutlinedButton(
-                      onPressed: _next,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFA84B32),
-                        backgroundColor: const Color(0xFFF3E6DA),
-                        side: const BorderSide(
-                            color: Color(0xFFA84B32), width: 1.5),
-                        fixedSize: Size(buttonWidth, 52),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                        textStyle: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(_page == 2 ? 'Get Started' : 'Next'),
-                          if (_page < 2) ...[
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward, size: 19),
-                          ],
-                        ],
-                      ),
+                  const SizedBox(height: 26),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: travelerInk,
+                      fontSize: 16,
+                      height: 1.5,
                     ),
+                  ),
+                  const SizedBox(height: 34),
+                  Center(
+                    child: SvgPicture.asset(
+                      'assets/figma/$indicator',
+                      width: 93,
+                      height: 39,
+                    ),
+                  ),
+                  const SizedBox(height: 34),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: widget.onContinue,
+                          style: TextButton.styleFrom(
+                            foregroundColor: travelerInk,
+                          ),
+                          child: const Text(
+                            'Skip',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _next,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: travelerRust,
+                            backgroundColor: const Color(0xFFF3E6DA),
+                            side: const BorderSide(
+                              color: travelerRust,
+                              width: 1.5,
+                            ),
+                            minimumSize: const Size(0, 52),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Text(last ? 'Get Started' : 'Next'),
+                              if (!last)
+                                const Icon(Icons.arrow_forward, size: 19),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 120),
-          ],
-        ),
-      );
-    });
+          ),
+        );
+      },
+    );
   }
 }
