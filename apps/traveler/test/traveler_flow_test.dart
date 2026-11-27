@@ -1,64 +1,129 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gomigo_shared_widgets/gomigo_shared_widgets.dart';
+import 'package:traveler/features/booking/booking_repository.dart';
+import 'package:traveler/features/onboarding/start_screen.dart';
+import 'package:traveler/features/onboarding/walkthrough_screen.dart';
+import 'package:traveler/features/verification/verification_repository.dart';
 import 'package:traveler/main.dart' as traveler;
 
 void main() {
-  testWidgets('launches Traveler and preserves onboarding and discovery', (
+  testWidgets(
+    'normal entry supports location skip and validates account fields',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await traveler.main();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 2100));
+      expect(
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
+        'GoMigo Traveler',
+      );
+      await tester.tap(find.byType(StartScreen));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Continue without location'));
+      await tester.pumpAndSettle();
+      expect(find.text('Email Address'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Log In'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter an email address.'), findsOneWidget);
+      expect(find.text('Enter your password.'), findsOneWidget);
+
+      await tester.tap(find.text('Don’t have an account? Sign Up'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextFormField);
+      for (final (index, value) in [
+        'Demo Traveler',
+        'traveler@example.invalid',
+        '',
+        'demo-testing',
+        'different',
+      ].indexed) {
+        await tester.ensureVisible(fields.at(index));
+        await tester.enterText(fields.at(index), value);
+      }
+      final submit = find.widgetWithText(FilledButton, 'Sign Up');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(find.text('Passwords must match.'), findsOneWidget);
+      await tester.enterText(fields.last, 'demo-testing');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'GoMigo is not configured on this build. Contact the demo organizer.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Find a Migo'), findsNothing);
+    },
+  );
+
+  testWidgets('walkthrough fits a narrow phone with larger text', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(430, 1000));
+    await tester.binding.setSurfaceSize(const Size(360, 680));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    // Ahem, the widget test font, is wider than the runtime font.
-    tester.platformDispatcher.textScaleFactorTestValue = 0.75;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.25;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    var completed = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WalkthroughScreen(onContinue: () => completed = true),
+        ),
+      ),
+    );
+    for (final (title, label) in [
+      ('Find a Local Buddy', 'Next'),
+      ('Book and Explore', 'Next'),
+      ('Travel with Confidence', 'Get Started'),
+    ]) {
+      expect(find.text(title), findsOneWidget);
+      final button = find.widgetWithText(OutlinedButton, label);
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+    expect(completed, true);
+  });
 
-    traveler.main();
-    await tester.pumpAndSettle();
+  test('booking date and time always use Philippine wall time', () {
+    final utc = philippineBookingTime(DateTime(2026, 11, 28), 1, 15);
+    expect(utc, DateTime.utc(2026, 11, 27, 17, 15));
+    expect(philippineWallTime(utc), DateTime.utc(2026, 11, 28, 1, 15));
+  });
 
+  test('verification accepts JPEG and PNG signatures only', () {
     expect(
-      tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
-      'GoMigo Traveler',
+      verificationImageType(
+        Uint8List.fromList([255, 216, 255, 224, 0, 0, 0, 0]),
+      ),
+      'image/jpeg',
     );
-    await tester.tap(find.byType(GoMigoBrand));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Turn on location service'));
-    await tester.pumpAndSettle();
-
-    final signUp = find.text('Sign Up');
-    await tester.ensureVisible(signUp);
-    await tester.tap(signUp);
-    await tester.pumpAndSettle();
-    expect(find.text('Find a Local Buddy'), findsOneWidget);
-
-    await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
-    expect(find.text('Book and Explore'), findsOneWidget);
-    await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
-    expect(find.text('Travel with Confidence'), findsOneWidget);
-    await tester.tap(find.text('Get Started'));
-    await tester.pumpAndSettle();
-
-    final findAMigo = find.text('Find a Migo');
-    await tester.tap(findAMigo);
-    await tester.pumpAndSettle();
-    expect(find.text('What do you want to do today?'), findsOneWidget);
-    await tester.tap(find.text('Coffee & conversation').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Food & hidden gems'), findsOneWidget);
-
-    final discoveryBack = find.byWidgetPredicate(
-      (widget) =>
-          widget is SvgPicture &&
-          widget.bytesLoader is SvgAssetLoader &&
-          (widget.bytesLoader as SvgAssetLoader).assetName ==
-              'assets/figma/finding_chevron_backward.svg',
+    expect(
+      verificationImageType(
+        Uint8List.fromList([137, 80, 78, 71, 13, 10, 26, 10]),
+      ),
+      'image/png',
     );
-    await tester.tap(discoveryBack);
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(FilledButton, 'Find a Migo'), findsOneWidget);
+    expect(
+      verificationImageType(Uint8List.fromList([137, 80, 78, 71])),
+      isNull,
+    );
+    expect(
+      verificationImageType(
+        Uint8List.fromList([37, 80, 68, 70, 13, 10, 26, 10]),
+      ),
+      isNull,
+    );
   });
 }
