@@ -6,8 +6,9 @@ import '../../navigation/traveler_ui.dart';
 import 'account_repository.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.account});
+  const LoginScreen({super.key, required this.account, this.accountNotice});
   final AccountRepository? account;
+  final String? accountNotice;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -23,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _register = false;
   bool _busy = false;
   bool _hidePassword = true;
-  String? _notice;
+  late String? _notice = widget.accountNotice;
 
   @override
   void dispose() {

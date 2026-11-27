@@ -32,6 +32,7 @@ class GoMigoApp extends StatefulWidget {
 class _GoMigoAppState extends State<GoMigoApp> {
   StreamSubscription<AuthState>? _subscription;
   String? _user;
+  String? _accountNotice;
   int _step = 0;
 
   @override
@@ -44,6 +45,7 @@ class _GoMigoAppState extends State<GoMigoApp> {
         if (mounted && user != _user)
           setState(() {
             _user = user;
+            if (user != null) _accountNotice = null;
             _step = 2;
           });
       },
@@ -59,6 +61,13 @@ class _GoMigoAppState extends State<GoMigoApp> {
     super.dispose();
   }
 
+  Future<void> _rejectAccount(String user) async {
+    final auth = widget.client!.auth;
+    if (!mounted || auth.currentUser?.id != user) return;
+    _accountNotice = 'Sign in with a Traveler account.';
+    await auth.signOut();
+  }
+
   Widget _guest() => PopScope(
     canPop: _step == 0,
     onPopInvokedWithResult: (popped, _) {
@@ -69,6 +78,7 @@ class _GoMigoAppState extends State<GoMigoApp> {
         0 => StartScreen(onContinue: () => setState(() => _step = 1)),
         1 => LocationScreen(onContinue: () => setState(() => _step = 2)),
         _ => LoginScreen(
+          accountNotice: _accountNotice,
           account: widget.client == null
               ? null
               : AccountRepository(widget.client!),
@@ -85,14 +95,23 @@ class _GoMigoAppState extends State<GoMigoApp> {
     theme: goMigoTheme(),
     home: _user == null
         ? _guest()
-        : _TravelerHome(client: widget.client!, user: _user!),
+        : _TravelerHome(
+            client: widget.client!,
+            user: _user!,
+            onWrongAccount: _rejectAccount,
+          ),
   );
 }
 
 class _TravelerHome extends StatefulWidget {
-  const _TravelerHome({required this.client, required this.user});
+  const _TravelerHome({
+    required this.client,
+    required this.user,
+    required this.onWrongAccount,
+  });
   final SupabaseClient client;
   final String user;
+  final Future<void> Function(String user) onWrongAccount;
 
   @override
   State<_TravelerHome> createState() => _TravelerHomeState();
@@ -112,13 +131,21 @@ class _TravelerHomeState extends State<_TravelerHome> {
 
   Future<({bool traveler, bool seen})> _load() async {
     final profile = await _account.profile();
+    if (profile['role'] != 'traveler') {
+      try {
+        await widget.onWrongAccount(widget.user);
+      } catch (_) {
+        // The denied screen lets the user retry sign-out.
+      }
+      return (traveler: false, seen: false);
+    }
     var seen = false;
     try {
       seen = await _prefs.getBool(_walkthroughKey) ?? false;
     } catch (_) {
       // The walkthrough can still be completed for this session.
     }
-    return (traveler: profile['role'] == 'traveler', seen: seen);
+    return (traveler: true, seen: seen);
   }
 
   void _completeWalkthrough() {
@@ -191,7 +218,7 @@ class _TravelerHomeState extends State<_TravelerHome> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('This account belongs to the Amigo app.'),
+                const Text('Sign in with a Traveler account.'),
                 TextButton(
                   onPressed: () async {
                     try {

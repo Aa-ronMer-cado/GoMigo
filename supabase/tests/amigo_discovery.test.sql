@@ -37,7 +37,10 @@ select throws_ok(
 
 update public.amigo_profiles set discovery_latitude = 10.3167, discovery_longitude = 123.8907
 where id = 'fd650000-2b7a-43f1-8cde-c0061da0a003';
+insert into auth.users (id, raw_user_meta_data)
+values ('fd650000-2b7a-43f1-8cde-c0061da0e005', '{"display_name":"Discovery Traveler"}');
 set local role authenticated;
+set local request.jwt.claim.sub = 'fd650000-2b7a-43f1-8cde-c0061da0e005';
 select ok(
   (select discovery_latitude = 10.3167 and discovery_longitude = 123.8907 from public.amigo_profiles
    where id = 'fd650000-2b7a-43f1-8cde-c0061da0a003'),

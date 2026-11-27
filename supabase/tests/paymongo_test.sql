@@ -49,19 +49,24 @@ select is(public.paymongo_checkout_for_traveler(
   '8fac1c77-19f3-41d3-ad97-8fd118d79730', '8fac1c77-19f3-41d3-ad97-8fd118d79727', false
 ) ->> 'status', 'unpaid', 'Viewing status does not create a checkout');
 
-select is((public.paymongo_checkout_for_traveler(
-  '8fac1c77-19f3-41d3-ad97-8fd118d79730', '8fac1c77-19f3-41d3-ad97-8fd118d79727', true
-) ->> 'amount_centavos')::int, 13530, 'Reservation uses the trusted booking total');
+select throws_ok($test$
+  select public.paymongo_checkout_for_traveler(
+    '8fac1c77-19f3-41d3-ad97-8fd118d79730', '8fac1c77-19f3-41d3-ad97-8fd118d79727', true)
+$test$, 'GM409', 'New PayMongo test checkouts are disabled', 'Cutover prevents new PayMongo attempts');
+
+insert into payments_private.checkout_attempts (booking_id, amount_centavos)
+values ('8fac1c77-19f3-41d3-ad97-8fd118d79730', 13530);
+update public.bookings set payment_status = 'pending'
+where id = '8fac1c77-19f3-41d3-ad97-8fd118d79730';
 
 select is(public.paymongo_checkout_for_traveler(
-  '8fac1c77-19f3-41d3-ad97-8fd118d79730', '8fac1c77-19f3-41d3-ad97-8fd118d79727', true
-) ->> 'id', (select id::text from payments_private.checkout_attempts
-  where booking_id = '8fac1c77-19f3-41d3-ad97-8fd118d79730'), 'Creation retries reuse the same reservation');
+  '8fac1c77-19f3-41d3-ad97-8fd118d79730', '8fac1c77-19f3-41d3-ad97-8fd118d79727', false
+) ->> 'id', null, 'An unbound legacy reservation cannot trigger PayMongo checkout creation after cutover');
 
 select is(public.paymongo_save_checkout(
   (select id from payments_private.checkout_attempts where booking_id = '8fac1c77-19f3-41d3-ad97-8fd118d79730'),
   'cs_fixture', 'https://checkout.paymongo.com/fixture'
-) ->> 'checkout_id', 'cs_fixture', 'Saves the provider checkout before handing the URL to the Traveler');
+) ->> 'checkout_id', 'cs_fixture', 'An in-flight legacy checkout can still save a provider response');
 
 select is(public.paymongo_confirm_payment('evt_wrong',
   (select id from payments_private.checkout_attempts where booking_id = '8fac1c77-19f3-41d3-ad97-8fd118d79730'),

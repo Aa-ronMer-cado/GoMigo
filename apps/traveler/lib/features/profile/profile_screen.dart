@@ -347,7 +347,7 @@ class _PaymentMethods extends StatelessWidget {
         Text('Test payments', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 10),
         const Text(
-          'Open an accepted booking to pay using the PayMongo test checkout.',
+          'Open an accepted booking to try a payment in Xendit Test Mode.',
         ),
         const SizedBox(height: 18),
         const TravelerCard(

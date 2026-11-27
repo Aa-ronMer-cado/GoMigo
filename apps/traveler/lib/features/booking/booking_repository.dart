@@ -1,6 +1,8 @@
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../discovery/amigo_photo.dart';
+
 typedef BookingRow = Map<String, dynamic>;
 
 class BookingRepository {
@@ -23,14 +25,15 @@ class BookingRepository {
       .stream(primaryKey: ['booking_id'])
       .eq('booking_id', id);
 
-  Future<BookingRow?> review(String id) => client
-      .from('reviews')
-      .select('rating,body')
-      .eq('booking_id', id)
-      .maybeSingle();
+  Future<BookingRow?> review(String id) async {
+    final rows = await client.from('reviews').select().eq('booking_id', id);
+    return rows.where((row) => row['author_role'] != 'amigo').firstOrNull;
+  }
 
-  Future<List<BookingRow>> amigos() =>
-      client.from('amigo_profiles').select('id,display_name,photo_url,is_test');
+  Future<List<BookingRow>> amigos() async {
+    final rows = await client.from('amigo_profiles').select();
+    return rows.map((row) => resolveAmigoPhoto(client, row)).toList();
+  }
 
   Future<bool> verified() async {
     final row = await client

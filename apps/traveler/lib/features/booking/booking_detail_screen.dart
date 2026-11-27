@@ -79,7 +79,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
         notifyTraveler(
           context,
           error.status == 503
-              ? 'PayMongo test checkout is not configured or temporarily unavailable.'
+              ? 'Test checkout is unavailable. Try again later.'
               : 'Could not update test checkout. Try again.',
         );
       }
@@ -114,7 +114,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
     _checkoutLaunched = true;
     if (!await launchUrl(checkout, mode: LaunchMode.externalApplication)) {
       _checkoutLaunched = false;
-      if (mounted) notifyTraveler(context, 'Could not open the PayMongo page.');
+      if (mounted) notifyTraveler(context, 'Could not open test checkout.');
     }
   });
 
@@ -163,6 +163,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
       if (rows != null) _booking = rows.first;
       final status = _booking['status'] as String;
       final payment = _booking['payment_status'] as String;
+      final canOpenCheckout = payment == 'pending' && _checkout != null;
       final start = DateTime.parse(_booking['starts_at'] as String);
       final end = DateTime.parse(_booking['ends_at'] as String);
       return Scaffold(
@@ -312,20 +313,22 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
             ),
             if (status == 'accepted') ...[
               Text(
-                'PayMongo test payment · ${statusLabel(payment)}',
+                'Test payment · ${statusLabel(payment)}',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              if (payment != 'paid' && end.isAfter(_now)) ...[
-                TravelerButton(
-                  _checkout != null
-                      ? 'Continue to PayMongo'
-                      : 'Prepare test checkout',
-                  _busy
-                      ? null
-                      : _checkout == null
-                      ? () => _payment('open')
-                      : _openCheckout,
-                ),
+              if (payment != 'paid' &&
+                  (start.isAfter(_now) || payment == 'pending')) ...[
+                if (end.isAfter(_now))
+                  TravelerButton(
+                    canOpenCheckout
+                        ? 'Continue to test checkout'
+                        : 'Prepare test checkout',
+                    _busy
+                        ? null
+                        : canOpenCheckout
+                        ? _openCheckout
+                        : () => _payment('open'),
+                  ),
                 Wrap(
                   spacing: 8,
                   children: [
@@ -333,7 +336,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                       onPressed: _busy ? null : () => _payment('status'),
                       child: const Text('Refresh payment'),
                     ),
-                    if (payment == 'pending' || payment == 'failed')
+                    if (payment == 'pending')
                       TextButton(
                         onPressed: _busy ? null : () => _payment('cancel'),
                         child: const Text('Cancel test checkout'),
@@ -408,7 +411,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
               ),
             ],
             if ((status == 'pending' || status == 'accepted') &&
-                (payment == 'unpaid' || payment == 'cancelled'))
+                (payment == 'unpaid' ||
+                    payment == 'cancelled' ||
+                    payment == 'failed'))
               TextButton(
                 onPressed: _busy
                     ? null

@@ -13,7 +13,15 @@ Future<void> main() async {
   SupabaseClient? client;
   if (url.isNotEmpty && key.isNotEmpty) {
     try {
-      final supabase = await Supabase.initialize(url: url, publishableKey: key);
+      final supabase = await Supabase.initialize(
+        url: url,
+        publishableKey: key,
+        authOptions: FlutterAuthClientOptions(
+          localStorage: SharedPreferencesLocalStorage(
+            persistSessionKey: 'gomigo-traveler-${Uri.parse(url).host}-session',
+          ),
+        ),
+      );
       client = supabase.client;
     } catch (_) {
       // The entry screen can report a configuration error without exposing keys.

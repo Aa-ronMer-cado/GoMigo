@@ -164,14 +164,15 @@ class _FindingMigoScreenState extends State<FindingMigoScreen> {
         if (all == null)
           return const Center(child: CircularProgressIndicator());
         final filtered = all.where((amigo) {
-          final age = amigo['age'] as int;
+          final age = amigo['age'] as int?;
           return (!_savedOnly || _favorites.contains(amigo['id'])) &&
               (_activity == null ||
                   (amigo['interests'] as List).contains(_activity)) &&
               (_area == null || amigo['area'] == _area) &&
               (_gender == null || amigo['gender'] == _gender) &&
-              age >= _ages.start &&
-              age <= _ages.end;
+              (age == null
+                  ? _ages.start == 18 && _ages.end == 120
+                  : age >= _ages.start && age <= _ages.end);
         });
         final needsLocation = _nearby && _origin == null;
         final shown = needsLocation

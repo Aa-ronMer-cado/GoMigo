@@ -7,7 +7,8 @@ insert into auth.users (id, raw_user_meta_data) values
   ('fd650000-2b7a-43f1-8cde-c0061da0e001', '{"display_name":"Fictional Traveler","role":"amigo"}'),
   ('fd650000-2b7a-43f1-8cde-c0061da0e002', '{"display_name":"Fictional Reviewer"}'),
   ('fd650000-2b7a-43f1-8cde-c0061da0e003', '{"display_name":"Fictional Outsider"}'),
-  ('fd650000-2b7a-43f1-8cde-c0061da0e004', '{"display_name":"Fictional Amigo"}');
+  ('fd650000-2b7a-43f1-8cde-c0061da0e004', '{"display_name":"Fictional Amigo","gomigo_role":"amigo"}');
+update public.profiles set role = 'reviewer' where id = 'fd650000-2b7a-43f1-8cde-c0061da0e002';
 insert into private.verification_reviewers (user_id) values ('fd650000-2b7a-43f1-8cde-c0061da0e002');
 insert into private.demo_travelers (user_id) values ('fd650000-2b7a-43f1-8cde-c0061da0e001');
 insert into public.amigo_profiles (
