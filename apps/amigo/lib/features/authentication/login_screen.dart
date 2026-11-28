@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:gomigo_shared_widgets/device_location.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../navigation/amigo_ui.dart';
@@ -10,9 +11,11 @@ class AmigoLoginScreen extends StatefulWidget {
     super.key,
     required this.account,
     this.accountNotice,
+    this.onLocationUnavailable,
   });
   final AmigoAccountRepository? account;
   final String? accountNotice;
+  final VoidCallback? onLocationUnavailable;
 
   @override
   State<AmigoLoginScreen> createState() => _AmigoLoginScreenState();
@@ -44,7 +47,7 @@ class _AmigoLoginScreenState extends State<AmigoLoginScreen> {
     if (account == null) {
       setState(
         () => _notice =
-            'GoMigo is not configured on this build. Contact the demo organizer.',
+            'This app build cannot connect to GoMigo. Contact GoMigo support.',
       );
       return;
     }
@@ -53,6 +56,10 @@ class _AmigoLoginScreenState extends State<AmigoLoginScreen> {
       _notice = null;
     });
     try {
+      if (widget.onLocationUnavailable != null) {
+        await requireDeviceLocation(requestPermission: false);
+        if (!mounted) return;
+      }
       final signedIn = await account.authenticate(
         email: _email.text.trim(),
         password: _password.text,
@@ -65,8 +72,20 @@ class _AmigoLoginScreenState extends State<AmigoLoginScreen> {
           _notice = 'Check your email to confirm your account, then log in.';
         });
       }
+    } on DeviceLocationException {
+      if (mounted) widget.onLocationUnavailable?.call();
     } on AuthException catch (error) {
-      if (mounted) setState(() => _notice = error.message);
+      if (mounted) {
+        setState(() {
+          _notice = switch (error.code) {
+            'email_not_confirmed' =>
+              'Confirm your email using the link we sent, then sign in again.',
+            'email_address_not_authorized' =>
+              'GoMigo could not send a confirmation email to this address. Contact GoMigo support.',
+            _ => error.message,
+          };
+        });
+      }
     } catch (_) {
       if (mounted) {
         setState(

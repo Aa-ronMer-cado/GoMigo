@@ -52,7 +52,7 @@ class _GoMigoAmigoAppState extends State<GoMigoAmigoApp> {
           setState(() {
             _userId = id;
             if (id != null) _accountNotice = null;
-            _step = 2;
+            _step = id == null ? 1 : 2;
           });
         }
       },
@@ -78,7 +78,7 @@ class _GoMigoAmigoAppState extends State<GoMigoAmigoApp> {
   Widget _guest(SupabaseClient? client) => PopScope(
     canPop: _step == 0,
     onPopInvokedWithResult: (popped, _) {
-      if (!popped && _step > 0) setState(() => _step--);
+      if (!popped && _step > 0) setState(() => _step = 0);
     },
     child: Scaffold(
       body: switch (_step) {
@@ -86,6 +86,7 @@ class _GoMigoAmigoAppState extends State<GoMigoAmigoApp> {
         1 => AmigoLocationScreen(onContinue: () => setState(() => _step = 2)),
         _ => AmigoLoginScreen(
           accountNotice: _accountNotice,
+          onLocationUnavailable: () => setState(() => _step = 1),
           account: client == null ? null : AmigoAccountRepository(client),
         ),
       },
@@ -101,6 +102,9 @@ class _GoMigoAmigoAppState extends State<GoMigoAmigoApp> {
       debugShowCheckedModeBanner: false,
       title: 'GoMigo Amigo',
       theme: goMigoTheme(),
+      builder: (_, child) => client == null || user == null
+          ? child!
+          : BookingLocationScope(client: client, child: child!),
       home: client == null || user == null
           ? _guest(client)
           : _AmigoAccess(

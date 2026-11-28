@@ -12,6 +12,7 @@ dependencies:
   flutter_svg: ^2.0.17
   flutter_map: ^8.3.2
   geolocator: ^14.0.2
+  image_picker: ^1.1.2
   latlong2: ^0.9.1
   supabase_flutter: 2.18.3
   url_launcher: ^6.3.1
@@ -22,3 +23,18 @@ flutter:
     - assets/figma/start_frame1.svg
     - assets/figma/start_frame2.svg
     - assets/figma/locate_fixed.svg
+    - assets/figma/account/id_approved.gif
+    - assets/figma/account/id_approved.png
+    - assets/figma/account/id_back.svg
+    - assets/figma/account/id_back_camera.svg
+    - assets/figma/account/id_capture_camera.svg
+    - assets/figma/account/id_clock.svg
+    - assets/figma/account/id_front_camera.svg
+    - assets/figma/account/id_next.svg
+    - assets/figma/account/id_pending.png
+    - assets/figma/account/id_step_complete.svg
+    - assets/figma/account/id_step_complete_background.svg
+    - assets/figma/account/id_step_current.svg
+    - assets/figma/account/id_step_current_background.svg
+    - assets/figma/account/id_step_inactive.svg
+    - assets/figma/account/id_waiting_clock.svg

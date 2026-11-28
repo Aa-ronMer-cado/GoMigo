@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:gomigo_shared_widgets/device_location.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../navigation/traveler_ui.dart';
 import 'account_repository.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.account, this.accountNotice});
+  const LoginScreen({
+    super.key,
+    required this.account,
+    this.accountNotice,
+    this.onLocationUnavailable,
+  });
   final AccountRepository? account;
   final String? accountNotice;
+  final VoidCallback? onLocationUnavailable;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -49,6 +56,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _notice = null;
     });
     try {
+      if (widget.onLocationUnavailable != null) {
+        await requireDeviceLocation(requestPermission: false);
+        if (!mounted) return;
+      }
       final signedIn = await account.authenticate(
         email: _email.text.trim(),
         password: _password.text,
@@ -61,6 +72,8 @@ class _LoginScreenState extends State<LoginScreen> {
           _notice = 'Check your email to confirm your account, then log in.';
         });
       }
+    } on DeviceLocationException {
+      if (mounted) widget.onLocationUnavailable?.call();
     } on AuthException catch (error) {
       if (mounted) setState(() => _notice = error.message);
     } catch (_) {

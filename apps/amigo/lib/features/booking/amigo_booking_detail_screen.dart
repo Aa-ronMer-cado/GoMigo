@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gomigo_shared_widgets/meetup.dart';
 
 import 'amigo_booking_repository.dart';
 import 'amigo_decline_screen.dart';
@@ -227,6 +228,7 @@ class _AmigoBookingDetailScreenState extends State<AmigoBookingDetailScreen> {
             const SizedBox(height: 20),
             _PriceBreakdown(booking: booking),
             const SizedBox(height: 16),
+            BookingLocationConsent(booking: booking.row, amigoView: true),
             if (booking.declineReason case final String reason)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),

@@ -37,7 +37,7 @@ class _TestRepository extends DiscoveryRepository {
 
   @override
   Future<List<Map<String, dynamic>>> amigos() async => [
-    _profile('Nearby Amigo', latitude: 0.01),
+    {..._profile('Nearby Amigo', latitude: 0.01), 'age': null},
     _profile('Distant Amigo', latitude: 0.5),
   ];
 
@@ -55,27 +55,26 @@ void main() {
       _profile('just inside', latitude: latitudeAt(19999.9)),
       _profile('no location'),
       _profile('just outside', latitude: latitudeAt(20000.1)),
+      _profile('within 15 km', latitude: latitudeAt(14999.9)),
       _profile('closest', latitude: 0.01),
     ];
     final nearby = discoveryResults(profiles, origin: const LatLng(0, 0));
     expect(nearby.map((result) => result.profile['id']), [
       'closest',
+      'within 15 km',
       'just inside',
     ]);
-    expect(
-      discoveryResults(profiles, origin: null).map((row) => row.profile),
-      profiles,
-    );
+    expect(discoveryResults(profiles, origin: null), isEmpty);
   });
 
-  test('legacy coordinates only apply to known fictional profiles', () {
+  test('even a known fictional profile requires stored coordinates', () {
     const id = 'ca980000-31d7-4d85-9cc7-e25de13a3003';
     const origin = LatLng(14.6042, 120.9822);
     expect(
       discoveryResults([
         {'id': id, 'is_test': true},
-      ], origin: origin).single.meters,
-      0,
+      ], origin: origin),
+      isEmpty,
     );
     expect(
       discoveryResults([
@@ -101,9 +100,7 @@ void main() {
     setUp(() => repository = _TestRepository());
     tearDown(() => repository.client.dispose());
 
-    testWidgets('applies the radius when location is available', (
-      tester,
-    ) async {
+    testWidgets('handles nearby profiles without ages', (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final messenger = tester.binding.defaultBinaryMessenger;
@@ -135,14 +132,14 @@ void main() {
       expect(find.text('About 1.1 km away'), findsOneWidget);
       expect(find.text('Distant Amigo'), findsNothing);
 
-      await tester.tap(find.text('Browse all areas'));
-      await tester.pumpAndSettle();
-      expect(find.text('Showing all areas'), findsOneWidget);
-      expect(find.text('Distant Amigo'), findsOneWidget);
-      expect(find.text('About 1.1 km away'), findsNothing);
+      expect(find.text('Gender'), findsOneWidget);
+      expect(find.text('Activity'), findsOneWidget);
+      expect(find.text('Browse all areas'), findsNothing);
+      expect(find.text('Favorites'), findsNothing);
+      expect(find.byType(RangeSlider), findsNothing);
     });
 
-    testWidgets('location denial offers an explicit all-areas fallback', (
+    testWidgets('location denial offers Settings and withholds results', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -178,16 +175,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(permissionRequests, 0);
       expect(find.text('Nearby Amigo'), findsNothing);
-      await tester.tap(find.text('Use my location'));
+      await tester.tap(find.text('Check location'));
       await tester.pumpAndSettle();
       expect(permissionRequests, 1);
       expect(
-        find.textContaining('Allow location in your app or browser settings'),
+        find.textContaining('Allow it in your app settings'),
         findsOneWidget,
       );
-      await tester.tap(find.text('Browse all areas'));
-      await tester.pumpAndSettle();
-      expect(find.text('Nearby Amigo'), findsOneWidget);
+      expect(find.text('Open app settings'), findsOneWidget);
+      expect(find.text('Nearby Amigo'), findsNothing);
     });
   });
 }

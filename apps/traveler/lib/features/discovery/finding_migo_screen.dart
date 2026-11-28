@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:gomigo_shared_widgets/device_location.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../navigation/traveler_ui.dart';
@@ -25,77 +25,78 @@ class FindingMigoScreen extends StatefulWidget {
   State<FindingMigoScreen> createState() => _FindingMigoScreenState();
 }
 
-class _FindingMigoScreenState extends State<FindingMigoScreen> {
+class _FindingMigoScreenState extends State<FindingMigoScreen>
+    with WidgetsBindingObserver {
   DiscoveryRepository get _repository => widget.repository;
   late Future<List<Map<String, dynamic>>> _loading;
   Set<String> _favorites = {};
   final _updating = <String>{};
   List<Map<String, dynamic>> _reviews = [];
   String? _activity;
-  String? _area;
   String? _gender;
-  RangeValues _ages = const RangeValues(18, 120);
-  bool _savedOnly = false;
-  bool _nearby = true;
   bool _locating = false;
   LatLng? _origin;
   String? _locationMessage;
+  DeviceLocationSettings? _settings;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loading = _load();
     unawaited(_findLocation());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_findLocation());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _findLocation({bool requestPermission = false}) async {
     if (_locating) return;
     setState(() {
-      _nearby = true;
       _locating = true;
       _origin = null;
       _locationMessage = null;
     });
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) {
-          setState(() => _locationMessage = 'Location services are off.');
-        }
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied && requestPermission) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (!mounted) return;
-      if (permission != LocationPermission.whileInUse &&
-          permission != LocationPermission.always) {
-        setState(() {
-          _locationMessage = permission == LocationPermission.deniedForever
-              ? 'Allow location in your app or browser settings to search nearby.'
-              : 'Allow location to see nearby Amigos.';
-        });
-        return;
-      }
-      final location = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
+      await requireDeviceLocation(requestPermission: requestPermission);
+      final position = await readDevicePosition();
       if (mounted) {
-        setState(() => _origin = LatLng(location.latitude, location.longitude));
+        setState(() {
+          _origin = LatLng(position.latitude, position.longitude);
+          _settings = null;
+        });
+      }
+    } on DeviceLocationException catch (error) {
+      if (mounted) {
+        setState(() {
+          _locationMessage = error.message;
+          _settings = error.settings ?? (requestPermission ? null : _settings);
+        });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         setState(
-          () => _locationMessage =
-              'Could not get your location. Try again or browse all areas.',
+          () => _locationMessage = 'Could not get your location. Try again.',
         );
-      }
     } finally {
       if (mounted) setState(() => _locating = false);
     }
+  }
+
+  Future<void> _openSettings(DeviceLocationSettings settings) async {
+    if (await openDeviceLocationSettings(settings) || !mounted) return;
+    setState(
+      () => _locationMessage =
+          'Enable location in your device or browser settings.',
+    );
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
@@ -163,21 +164,13 @@ class _FindingMigoScreenState extends State<FindingMigoScreen> {
         final all = snapshot.data;
         if (all == null)
           return const Center(child: CircularProgressIndicator());
-        final filtered = all.where((amigo) {
-          final age = amigo['age'] as int?;
-          return (!_savedOnly || _favorites.contains(amigo['id'])) &&
-              (_activity == null ||
+        final nearby = discoveryResults(all, origin: _origin);
+        final shown = nearby.where((result) {
+          final amigo = result.profile;
+          return (_activity == null ||
                   (amigo['interests'] as List).contains(_activity)) &&
-              (_area == null || amigo['area'] == _area) &&
-              (_gender == null || amigo['gender'] == _gender) &&
-              (age == null
-                  ? _ages.start == 18 && _ages.end == 120
-                  : age >= _ages.start && age <= _ages.end);
+              (_gender == null || amigo['gender'] == _gender);
         });
-        final needsLocation = _nearby && _origin == null;
-        final shown = needsLocation
-            ? const <DiscoveryResult>[]
-            : discoveryResults(filtered, origin: _nearby ? _origin : null);
         return RefreshIndicator(
           onRefresh: () async {
             setState(() => _loading = _load());
@@ -211,67 +204,32 @@ class _FindingMigoScreenState extends State<FindingMigoScreen> {
                     child: _filter(
                       'Activity',
                       _activity,
-                      _options(all.expand((a) => a['interests'] as List)),
+                      _options(
+                        nearby.expand(
+                          (entry) => entry.profile['interests'] as List,
+                        ),
+                      ),
                       (value) => setState(() => _activity = value),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _filter(
-                      'Area',
-                      _area,
-                      _options(all.map((a) => a['area'])),
-                      (value) => setState(() => _area = value),
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: _filter(
                       'Gender',
                       _gender,
-                      _options(all.map((a) => a['gender'])),
+                      _options(nearby.map((entry) => entry.profile['gender'])),
                       (value) => setState(() => _gender = value),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilterChip(
-                      label: const Text('Favorites'),
-                      selected: _savedOnly,
-                      onSelected: (value) => setState(() => _savedOnly = value),
-                    ),
-                  ),
                 ],
               ),
-              Text(
-                'Age ${_ages.start.round()}–${_ages.end.round()}',
-                style: const TextStyle(color: travelerInk),
-              ),
-              RangeSlider(
-                values: _ages,
-                min: 18,
-                max: 120,
-                divisions: 102,
-                labels: RangeLabels(
-                  '${_ages.start.round()}',
-                  '${_ages.end.round()}',
-                ),
-                onChanged: (value) => setState(() => _ages = value),
-              ),
-              if (shown.isEmpty && !needsLocation)
+              if (shown.isEmpty && _origin != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 28),
                   child: Text(
-                    all.isEmpty
-                        ? 'There are no Amigo profiles yet.'
-                        : _nearby
-                        ? 'No Amigos within $discoveryRadiusKm km match these filters.'
-                        : _savedOnly
-                        ? 'No saved Amigos match these filters.'
-                        : 'No Amigos match these filters.',
+                    nearby.isEmpty
+                        ? 'No available Amigos within $discoveryRadiusKm km.'
+                        : 'No nearby Amigos match these filters.',
                   ),
                 ),
               for (final result in shown) _card(result.profile, result.meters),
@@ -286,43 +244,31 @@ class _FindingMigoScreenState extends State<FindingMigoScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _nearby ? 'Within $discoveryRadiusKm km' : 'Showing all areas',
-          style: const TextStyle(
-            color: travelerInk,
-            fontWeight: FontWeight.w800,
-          ),
+        const Text(
+          'Within $discoveryRadiusKm km',
+          style: TextStyle(color: travelerInk, fontWeight: FontWeight.w800),
         ),
-        if (_nearby && _locating)
+        if (_locating)
           const LinearProgressIndicator(
             semanticsLabel: 'Finding your location',
           ),
-        if (_nearby && _locationMessage != null) Text(_locationMessage!),
-        Wrap(
-          spacing: 8,
-          children: [
-            TextButton(
-              onPressed: _locating
-                  ? null
-                  : () => _findLocation(requestPermission: true),
-              child: Text(
-                _nearby && _origin != null
-                    ? 'Update location'
-                    : 'Use my location',
-              ),
-            ),
-            if (_nearby)
-              TextButton(
-                onPressed: () => setState(() => _nearby = false),
-                child: const Text('Browse all areas'),
-              ),
-          ],
-        ),
+        if (_locationMessage case final message?)
+          Semantics(liveRegion: true, child: Text(message)),
+        if (!_locating)
+          TextButton(
+            onPressed: () => _findLocation(requestPermission: true),
+            child: Text(_origin == null ? 'Check location' : 'Update location'),
+          ),
+        if (_settings case final settings?)
+          TextButton(
+            onPressed: _locating ? null : () => _openSettings(settings),
+            child: Text(settings.label),
+          ),
       ],
     ),
   );
 
-  Widget _card(Map<String, dynamic> amigo, double? meters) {
+  Widget _card(Map<String, dynamic> amigo, double meters) {
     final id = amigo['id'] as String;
     final rating = _reviews
         .where((review) => review['amigo_id'] == id)
@@ -386,8 +332,7 @@ class _FindingMigoScreenState extends State<FindingMigoScreen> {
                     ],
                   ),
                   Text(amigo['area'] as String),
-                  if (meters != null)
-                    Text('About ${(meters / 1000).toStringAsFixed(1)} km away'),
+                  Text('About ${(meters / 1000).toStringAsFixed(1)} km away'),
                   Text((amigo['languages'] as List).join(', ')),
                   Text(
                     '${pesos(amigo['rate_centavos'])}/hr${amigo['is_test'] == true ? ' · Demo' : ''}',

@@ -30,8 +30,12 @@
 	<string>Take your profile photo or photograph both sides of your test ID.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a profile photo or pictures of your test ID.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Share your location or record a route when you turn those features on during a booking.</string>
+	<string>Use your location for service areas and meetups, and share it or record a route when you turn those on.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

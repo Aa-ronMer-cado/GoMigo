@@ -1,28 +1,55 @@
 import 'package:geolocator/geolocator.dart';
 
-class DeviceLocationException implements Exception {
-  const DeviceLocationException(this.message);
-  final String message;
+enum DeviceLocationSettings {
+  app('Open app settings'),
+  locationServices('Open location settings');
+
+  const DeviceLocationSettings(this.label);
+  final String label;
 }
 
-Future<void> requireDeviceLocation() async {
+class DeviceLocationException implements Exception {
+  const DeviceLocationException(this.message, {this.settings});
+  final String message;
+  final DeviceLocationSettings? settings;
+}
+
+const _serviceDisabled = DeviceLocationException(
+  'Turn on device location services and try again.',
+  settings: DeviceLocationSettings.locationServices,
+);
+
+Future<void> requireDeviceLocation({bool requestPermission = true}) async {
+  if (!await Geolocator.isLocationServiceEnabled()) throw _serviceDisabled;
   var permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied ||
-      permission == LocationPermission.unableToDetermine) {
+  if (requestPermission &&
+      (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine)) {
     permission = await Geolocator.requestPermission();
   }
   if (permission == LocationPermission.deniedForever) {
     throw const DeviceLocationException(
-        'Enable GoMigo location access in your device settings.');
+      'GoMigo needs location access. Allow it in your app settings.',
+      settings: DeviceLocationSettings.app,
+    );
   }
   if (permission != LocationPermission.whileInUse &&
       permission != LocationPermission.always) {
     throw const DeviceLocationException(
-        'Location permission was denied. You can try again.');
+      'Location access is required. Allow it to continue.',
+    );
   }
-  if (!await Geolocator.isLocationServiceEnabled()) {
-    throw const DeviceLocationException(
-        'Turn on device location services and try again.');
+}
+
+Future<bool> openDeviceLocationSettings(DeviceLocationSettings settings) async {
+  try {
+    return await switch (settings) {
+      DeviceLocationSettings.app => Geolocator.openAppSettings(),
+      DeviceLocationSettings.locationServices =>
+        Geolocator.openLocationSettings(),
+    };
+  } catch (_) {
+    return false;
   }
 }
 
@@ -41,8 +68,11 @@ Future<Position> _readPosition() async {
         timeLimit: Duration(seconds: 12),
       ),
     );
+  } on LocationServiceDisabledException {
+    throw _serviceDisabled;
   } catch (_) {
     throw const DeviceLocationException(
-        'Could not get your current location. Move into an open area and try again.');
+      'Could not get your current location. Move into an open area and try again.',
+    );
   }
 }

@@ -12,6 +12,13 @@ type Attempt = {
 const sessionIdPattern = /^ps-[a-zA-Z0-9]{24}$/;
 const requestIdPattern = /^pr-[0-9a-f-]{36}$/i;
 const checkoutHosts = new Set(['checkout-staging.xendit.co', 'dev.xen.to']);
+const setupError = () => new PaymentError(503, 'Xendit test checkout configuration needs attention.', 'TEST_CHECKOUT_SETUP');
+const definitiveErrors = new Set([
+  'API_VALIDATION_ERROR', 'INVALID_AMOUNT', 'INVALID_CURRENCY', 'INVALID_COUNTRY',
+  'MISSING_CUSTOMER', 'INVALID_URL', 'INVALID_API_KEY', 'INVALID_PAYMENT_CHANNEL',
+  'DISALLOWED_CAPTURE_METHOD', 'MODE_NOT_SUPPORTED', 'SESSION_TYPE_NOT_SUPPORTED',
+]);
+const merchantErrors = new Set(['REQUEST_FORBIDDEN_ERROR', 'FEATURE_NOT_ACTIVATED', 'FEATURE_NOT_AVAILABLE']);
 
 function checkoutUrl(value: unknown): string | null {
   const url = secureUrl(value);
@@ -26,12 +33,17 @@ function response(attempt: Attempt): Response {
 function provider(settings: Settings, request: Fetch) {
   const key = settings('XENDIT_TEST_SECRET_KEY');
   if (!key?.startsWith('xnd_development_') || !settings('XENDIT_WEBHOOK_TOKEN')) {
-    throw new PaymentError(503, 'Xendit test checkout is unavailable.');
+    console.warn('Xendit Test Mode settings are missing or invalid');
+    throw setupError();
   }
   return async (path: string, options: RequestInit = {}) => {
     const result = await request(`https://api.xendit.co${path}`, {
       ...options,
-      headers: { Authorization: `Basic ${btoa(`${key}:`)}`, 'Content-Type': 'application/json', 'api-version': '2024-11-11' },
+      headers: {
+        Authorization: `Basic ${btoa(`${key}:`)}`,
+        'Content-Type': 'application/json',
+        ...(path.startsWith('/v3/payment_requests/') ? { 'api-version': '2024-11-11' } : {}),
+      },
       redirect: 'error', signal: AbortSignal.timeout(12_000),
     });
     return result;
@@ -111,7 +123,7 @@ export function checkoutHandler(settings: Settings, request: Fetch = fetch) {
     const send = provider(settings, request);
     if (attempt.status !== 'pending') {
       const project = secureUrl(settings('SUPABASE_URL'));
-      if (!project) throw new PaymentError(503, 'Xendit test checkout is unavailable.');
+      if (!project) throw setupError();
       const returnUrl = new URL('/functions/v1/xendit-checkout', project).href;
       attempt = await lookup(true);
       if (attempt.can_create && attempt.id) {
@@ -121,28 +133,35 @@ export function checkoutHandler(settings: Settings, request: Fetch = fetch) {
           currency: 'PHP', country: 'PH', capture_method: 'AUTOMATIC', allow_save_payment_method: 'DISABLED',
           success_return_url: returnUrl, cancel_return_url: returnUrl,
         }) });
-        const definitiveErrors = new Set(['API_VALIDATION_ERROR', 'INVALID_AMOUNT', 'INVALID_CURRENCY', 'INVALID_COUNTRY', 'MISSING_CUSTOMER', 'INVALID_URL', 'INVALID_API_KEY']);
-        const rejection = [400, 422].includes(createdResponse.status) ? record(await createdResponse.clone().json().catch(() => null)) : {};
-        if ([401, 403].includes(createdResponse.status) || definitiveErrors.has(String(rejection.error_code))) {
-          await db.rpc('xendit_release_rejected', { p_attempt_id: attempt.id });
-          throw new PaymentError(503, 'Xendit rejected the test checkout. Check the setup and try again.');
+        if (!createdResponse.ok) {
+          const rejection = record(await createdResponse.clone().json().catch(() => null));
+          const code = String(rejection.error_code);
+          const knownRejection = definitiveErrors.has(code);
+          console.warn('Xendit test session creation failed', createdResponse.status,
+            knownRejection || merchantErrors.has(code) ? code : 'UNRECOGNIZED_ERROR');
+          const authorizationFailure = [401, 403].includes(createdResponse.status);
+          if (authorizationFailure || (knownRejection && [400, 422].includes(createdResponse.status))) {
+            await db.rpc('xendit_release_rejected', { p_attempt_id: attempt.id });
+            if (authorizationFailure || code === 'INVALID_API_KEY' || code === 'INVALID_PAYMENT_CHANNEL') throw setupError();
+            throw new PaymentError(503, 'Xendit rejected the test checkout request.', 'TEST_CHECKOUT_REJECTED');
+          }
         }
         const session = verifiedSession(await readProvider(createdResponse));
         if (session.reference !== attempt.id || session.amount !== attempt.amount_centavos || !session.url || session.status !== 'ACTIVE') {
-          throw new PaymentError(409, 'Xendit checkout needs reconciliation.');
+          throw new PaymentError(409, 'Xendit checkout needs reconciliation.', 'TEST_CHECKOUT_RECONCILING');
         }
         attempt = await db.rpc<Attempt>('xendit_bind_checkout', { p_attempt_id: attempt.id, p_checkout_id: session.id, p_checkout_url: session.url, p_amount_centavos: session.amount });
         return response(attempt);
       }
     }
     if (attempt.status !== 'pending' || !attempt.id) return response(attempt);
-    if (!attempt.checkout_id) throw new PaymentError(409, 'Test checkout is awaiting reconciliation. Contact support.');
+    if (!attempt.checkout_id) throw new PaymentError(409, 'Test checkout is awaiting reconciliation.', 'TEST_CHECKOUT_RECONCILING');
     if (action === 'cancel') await send(`/sessions/${attempt.checkout_id}/cancel`, { method: 'POST' }).then((res) => res.body?.cancel()).catch(() => undefined);
     const session = verifiedSession(await readProvider(await send(`/sessions/${attempt.checkout_id}`)), attempt.checkout_id);
     if (session.reference !== attempt.id || session.amount !== attempt.amount_centavos) throw new PaymentError(409, 'Payment details do not match this booking.');
     const result = await settleSession(db, send, session);
     if (result && 'checkout_id' in result) return response(result);
-    if (action === 'cancel') throw new PaymentError(409, 'Cancellation is not yet confirmed. Refresh payment status.');
+    if (action === 'cancel') throw new PaymentError(409, 'Cancellation is not yet confirmed. Refresh payment status.', 'TEST_CHECKOUT_RECONCILING');
     return response(attempt);
   });
 }

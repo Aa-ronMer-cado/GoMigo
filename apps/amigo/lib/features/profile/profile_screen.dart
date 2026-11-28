@@ -1,13 +1,15 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:gomigo_shared_widgets/device_location.dart';
+import 'package:gomigo_shared_widgets/password_settings.dart';
 
 import '../../navigation/amigo_ui.dart';
 import '../authentication/account_repository.dart';
 import '../verification/verification_repository.dart';
 import '../verification/verification_screen.dart';
-import 'edit_profile_screen.dart';
+import 'profile_field_screen.dart';
+import 'profile_fields.dart';
+import 'profile_photo_screen.dart';
 import 'profile_repository.dart';
 
 const _art = 'assets/figma/account/';
@@ -39,6 +41,7 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
   late final _repository = AmigoProfileRepository(widget.account.client);
   late Future<_Profile> _profile = _load();
   bool _signingOut = false;
+  bool _pickingPhoto = false;
 
   Future<_Profile> _load() async {
     final account = widget.account.profile();
@@ -68,28 +71,51 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
     });
   }
 
-  Future<void> _edit(_Profile data) async {
-    final saved = await Navigator.of(context).push<bool>(
+  Future<void> _edit(_Profile data, AmigoProfileField field) async {
+    final saved = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) =>
-            _editor(data, onSaved: () => Navigator.pop(context, true)),
+        builder: (_) => AmigoProfileFieldScreen(
+          repository: _repository,
+          profile: data.amigo!,
+          field: field,
+        ),
       ),
     );
-    if (saved != true || !mounted) return;
-    _refresh();
-    widget.onProfileChanged?.call();
+    if (saved == null || !mounted) return;
+    _showSavedProfile(data, saved);
   }
 
-  Widget _editor(_Profile data, {required VoidCallback onSaved}) =>
-      AmigoEditProfileScreen(
-        repository: _repository,
-        profile: data.amigo,
-        name:
-            data.amigo?['display_name'] as String? ??
-            data.account['display_name'] as String,
-        gender: data.amigo?['gender'] as String? ?? 'unspecified',
-        onSaved: onSaved,
+  Future<void> _changePhoto(_Profile data) async {
+    if (_pickingPhoto) return;
+    setState(() => _pickingPhoto = true);
+    try {
+      final photo = await pickAmigoProfilePhoto();
+      if (!mounted || photo == null) return;
+      final saved = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (_) =>
+              AmigoProfilePhotoScreen(repository: _repository, photo: photo),
+        ),
       );
+      if (saved == null || !mounted) return;
+      _showSavedProfile(data, saved);
+    } on FormatException catch (error) {
+      if (mounted) amigoNotice(context, error.message);
+    } catch (_) {
+      if (mounted) {
+        amigoNotice(context, 'Could not open your photos. Try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _pickingPhoto = false);
+    }
+  }
+
+  void _showSavedProfile(_Profile previous, Map<String, dynamic> saved) {
+    setState(() {
+      _profile = Future.value((account: previous.account, amigo: saved));
+    });
+    widget.onProfileChanged?.call();
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<_Profile>(
@@ -127,6 +153,9 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
     final phone = user?.userMetadata?['contact_phone'];
     final photo = _repository.photoUrl(amigo);
     final verified = amigo?['verified'] == true;
+    final choosePhoto = amigo == null || _pickingPhoto
+        ? null
+        : () => _changePhoto(data);
     return Scaffold(
       appBar: amigoHeader('Profile'),
       body: ListView(
@@ -136,26 +165,32 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
             child: Stack(
               alignment: Alignment.bottomRight,
               children: [
-                CircleAvatar(
-                  radius: 73,
-                  backgroundColor: amigoSage,
-                  foregroundColor: amigoInk,
-                  child: ClipOval(
-                    child: SizedBox.square(
-                      dimension: 146,
-                      child: photo == null
-                          ? _Initial(name)
-                          : Image.network(
-                              photo,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => _Initial(name),
-                            ),
+                Semantics(
+                  label: 'Choose profile photo',
+                  button: true,
+                  enabled: choosePhoto != null,
+                  child: Material(
+                    color: amigoSage,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: choosePhoto,
+                      child: SizedBox.square(
+                        dimension: 146,
+                        child: photo == null
+                            ? _Initial(name)
+                            : Image.network(
+                                photo,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _Initial(name),
+                              ),
+                      ),
                     ),
                   ),
                 ),
                 IconButton.filled(
-                  onPressed: () => _edit(data),
-                  tooltip: 'Edit profile',
+                  onPressed: choosePhoto,
+                  tooltip: 'Edit profile photo',
                   style: IconButton.styleFrom(backgroundColor: amigoCream),
                   icon: _ProfileIcon('edit', size: 22),
                 ),
@@ -211,20 +246,32 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
           ]),
           const SizedBox(height: 15),
           _section('Amigo profile', [
-            ListTile(
-              leading: const Icon(
+            if (amigo != null) ...[
+              _fieldTile(
+                data,
+                AmigoProfileField.serviceArea,
                 Icons.location_on_outlined,
-                color: Color(0xFF557753),
+                amigo['area'] as String?,
               ),
-              title: Text(amigo?['area'] as String? ?? 'Set your service area'),
-              subtitle: Text(
-                amigo == null
-                    ? 'Complete your profile for traveler discovery'
-                    : '₱${((amigo['rate_centavos'] as num) / 100).toStringAsFixed(2)} per hour',
+              _fieldTile(
+                data,
+                AmigoProfileField.interests,
+                Icons.interests_outlined,
+                profileInterests(amigo).join(', '),
               ),
-              trailing: _ProfileIcon('chevron', size: 10),
-              onTap: () => _edit(data),
-            ),
+              _fieldTile(
+                data,
+                AmigoProfileField.description,
+                Icons.notes_outlined,
+                amigo['description'] as String?,
+              ),
+              _fieldTile(
+                data,
+                AmigoProfileField.rate,
+                Icons.payments_outlined,
+                '₱${profileRate(amigo['rate_centavos'])} per hour',
+              ),
+            ],
             if (amigo != null)
               ListTile(
                 leading: const Icon(
@@ -256,7 +303,11 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
           const SizedBox(height: 15),
           _section('Account settings', [
             _tile('help', 'Help & Support', () => _open(const _HelpScreen())),
-            _tile('settings', 'Settings', () => _open(const _SettingsScreen())),
+            _tile(
+              'settings',
+              'Settings',
+              () => _open(_SettingsScreen(account: widget.account)),
+            ),
             _tile(
               'logout',
               _signingOut ? 'Logging out…' : 'Log Out',
@@ -268,6 +319,21 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
       ),
     );
   }
+
+  Widget _fieldTile(
+    _Profile data,
+    AmigoProfileField field,
+    IconData icon,
+    String? value,
+  ) => ListTile(
+    leading: Icon(icon, color: const Color(0xFF557753)),
+    title: Text(field.label),
+    subtitle: value == null || value.isEmpty
+        ? null
+        : Text(value, maxLines: 2, overflow: TextOverflow.ellipsis),
+    trailing: _ProfileIcon('chevron', size: 10),
+    onTap: () => _edit(data, field),
+  );
 
   Widget _tile(
     String icon,
@@ -291,12 +357,13 @@ class _AmigoProfileScreenState extends State<AmigoProfileScreen> {
           style: const TextStyle(color: amigoInk, fontWeight: FontWeight.w800),
         ),
       ),
-      DecoratedBox(
-        decoration: BoxDecoration(
-          color: amigoCream,
-          border: Border.all(color: amigoBorder),
+      Material(
+        color: amigoCream,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: amigoBorder),
           borderRadius: BorderRadius.circular(17),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(children: rows),
       ),
     ],
@@ -414,18 +481,12 @@ class _ReviewsScreenState extends State<_ReviewsScreen> {
 }
 
 class _SettingsScreen extends StatelessWidget {
-  const _SettingsScreen();
+  const _SettingsScreen({required this.account});
+
+  final AmigoAccountRepository account;
 
   Future<void> _locationSettings(BuildContext context) async {
-    if (!kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS)) {
-      try {
-        if (await Geolocator.openAppSettings()) return;
-      } catch (_) {
-        // Fall through to instructions if app settings are unavailable.
-      }
-    }
+    if (await openDeviceLocationSettings(DeviceLocationSettings.app)) return;
     if (context.mounted) {
       amigoNotice(
         context,
@@ -440,6 +501,7 @@ class _SettingsScreen extends StatelessWidget {
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Card(child: PasswordSettingsTile(auth: account.client.auth)),
         Card(
           child: ListTile(
             leading: const Icon(Icons.location_on_outlined),

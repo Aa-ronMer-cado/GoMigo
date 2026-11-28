@@ -70,6 +70,47 @@ test('rejects anonymous access and live Xendit keys', async () => {
   assert.equal((await live(input('open'))).status, 503);
 });
 
+test('forbidden test checkout releases its reservation and a successful retry is reused', async () => {
+  let status = 'unpaid';
+  let creates = 0;
+  let releases = 0;
+  const handler = checkoutHandler(get, async (url, options = {}) => {
+    if (url.endsWith('/auth/v1/user')) return Response.json({ id: user });
+    if (url.endsWith('/xendit_checkout_for_traveler')) {
+      if (status === 'pending') return Response.json(active);
+      if (!JSON.parse(options.body).p_create) {
+        return Response.json({ provider: 'xendit', status });
+      }
+      return Response.json({ ...active, checkout_id: null, checkout_url: null, can_create: true });
+    }
+    if (url === 'https://api.xendit.co/sessions') {
+      creates++;
+      return creates === 1
+        ? Response.json({ error_code: 'REQUEST_FORBIDDEN_ERROR', message: 'fixture detail' }, { status: 403 })
+        : Response.json(session());
+    }
+    if (url.endsWith('/xendit_release_rejected')) {
+      assert.equal(JSON.parse(options.body).p_attempt_id, attempt);
+      releases++;
+      status = 'cancelled';
+      return Response.json(null);
+    }
+    if (url.endsWith('/xendit_bind_checkout')) {
+      status = 'pending';
+      return Response.json(active);
+    }
+    if (url.endsWith(`/sessions/${sessionId}`)) return Response.json(session());
+    assert.fail(`Unexpected endpoint ${url}`);
+  });
+  const forbidden = await handler(input('open'));
+  assert.equal(forbidden.status, 503);
+  assert.equal((await forbidden.json()).code, 'TEST_CHECKOUT_SETUP');
+  assert.equal(releases, 1);
+  assert.equal((await (await handler(input('open'))).json()).checkout_url, active.checkout_url);
+  assert.equal((await (await handler(input('open'))).json()).checkout_url, active.checkout_url);
+  assert.equal(creates, 2);
+});
+
 test('checks canonical payment status before settling and rejects amount mismatches', async () => {
   let amount = 123.45;
   let writes = 0;

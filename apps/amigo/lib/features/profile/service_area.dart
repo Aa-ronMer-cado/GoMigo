@@ -4,8 +4,8 @@ import 'package:latlong2/latlong.dart';
 
 typedef ServiceArea = ({String name, LatLng point});
 
-Future<ServiceArea> detectServiceArea() async {
-  await requireDeviceLocation();
+Future<ServiceArea> detectServiceArea({bool requestPermission = true}) async {
+  await requireDeviceLocation(requestPermission: requestPermission);
   final position = await readDevicePosition();
   try {
     final places = await placemarkFromCoordinates(

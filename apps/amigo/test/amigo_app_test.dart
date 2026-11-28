@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:amigo/features/authentication/login_screen.dart';
-import 'package:amigo/features/onboarding/location_screen.dart';
 import 'package:amigo/features/profile/edit_profile_screen.dart';
 import 'package:amigo/navigation/amigo_app.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomigo_shared_widgets/gomigo_shared_widgets.dart';
 import 'package:http/http.dart' as http;
@@ -24,6 +24,19 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    const location = MethodChannel('flutter.baseflow.com/geolocator');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    final locationCalls = <String>[];
+    messenger.setMockMethodCallHandler(location, (call) async {
+      locationCalls.add(call.method);
+      return switch (call.method) {
+        'checkPermission' => 2,
+        'isLocationServiceEnabled' => true,
+        'getCurrentPosition' => {'latitude': 13.75, 'longitude': 121.05},
+        _ => throw StateError('Unexpected location action: ${call.method}'),
+      };
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(location, null));
 
     await tester.pumpWidget(const GoMigoAmigoApp());
     await tester.pump();
@@ -35,16 +48,18 @@ void main() {
     expect(find.byType(GoMigoBrand), findsOneWidget);
     await tester.tap(find.byType(GoMigoBrand));
     await tester.pumpAndSettle();
-    expect(find.byType(AmigoLocationScreen), findsOneWidget);
-    await tester.tap(find.text('Continue without location'));
-    await tester.pumpAndSettle();
     expect(find.byType(AmigoLoginScreen), findsOneWidget);
+    expect(locationCalls, contains('getCurrentPosition'));
+    expect(locationCalls, isNot(contains('requestPermission')));
     expect(find.text('Email Address'), findsOneWidget);
     final signUp = find.text('Don’t have an account? Sign Up');
     await tester.ensureVisible(signUp);
     await tester.tap(signUp);
     await tester.pumpAndSettle();
     expect(find.text('Full Name'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(GoMigoBrand), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

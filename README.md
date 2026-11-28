@@ -29,9 +29,11 @@ flutter analyze
 flutter test
 ```
 
-Add `-d chrome` for web. Build and run on a phone to exercise the native camera and GPS. iOS builds require macOS and Xcode. Location sharing and route recording run while the meetup map is open in the foreground. Live markers expire after two minutes without an update. Long outages can leave gaps in recorded routes. The map uses OpenStreetMap tiles and draws recorded points. [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+The **GoMigo Traveler** and **GoMigo Amigo** launch profiles in VS Code load each app’s `.env.demo.json`. To package a demo APK from either app directory, run `flutter build apk --debug --dart-define-from-file=.env.demo.json`.
 
-**Find a Migo** uses the Traveler’s location on-device to show verified Amigos whose public service area is within 20 km, closest first. Choose **Browse all areas** to search without location. The fictional demo profiles use approximate centers in Manila, Cebu City, and Puerto Princesa.
+Add `-d chrome` for web. Build and run on a phone to exercise the native camera and GPS. iOS builds require macOS and Xcode. Enable device location and grant location permission to sign in. The map uses OpenStreetMap tiles and draws recorded points. [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+
+**Find a Migo** uses the Traveler’s location on-device to show available, verified Amigos with published service-area coordinates within 20 km, closest first. Each card shows the approximate distance. Use Gender or Activity to narrow the results.
 
 ## Run Amigo
 
@@ -51,7 +53,7 @@ flutter run --dart-define-from-file=.env.demo.json
 3. In Amigo, accept the request. Check the same booking in Traveler, complete sandbox checkout, and use chat and the meetup map. Start the session within the scheduled window, opt in to location sharing or route recording if desired, and complete the trip. Both participants can leave their own review.
 4. Open **Earnings** in Amigo to view completed sandbox bookings. A fictional payout method and simulated withdrawal can be recorded in the demo. No money is disbursed.
 
-Availability controls new requests and acceptance. The database rejects overlapping accepted bookings on the shared schedule. Location sharing and route recording are foreground features and require explicit opt-in for each participant.
+Availability controls new requests and acceptance. The database rejects overlapping accepted bookings on the shared schedule. Each participant can opt in to share their live location from the booking or meetup map. Sharing starts during the accepted booking’s meetup window, stays on across app screens, and can continue on Android and iOS while the app is backgrounded if the OS allows it. It ends when consent is withdrawn or the booking closes. Live markers expire after two minutes without an update. Route recording is a separate opt-in for an active session and requires keeping the map open in the foreground.
 
 ## Run ID review
 
@@ -78,7 +80,7 @@ The built-in Supabase mail service restricts recipients to project team email ad
 
 ## Enable Xendit Test Checkout
 
-1. In the GoMigo Xendit dashboard, select Test Mode and generate a development secret key with the permissions needed for payment sessions and payment requests. Xendit may require two-factor authentication. [Xendit API keys](https://help.xendit.co/hc/en-us/articles/16516398053273-What-is-API-Key-and-How-Do-I-Create-Them)
+1. In the GoMigo Xendit dashboard, select Test Mode and generate a secret key with **Write** permission for **Money In**. Check that Payment Sessions and a Philippine test payment channel are available. Xendit may require two-factor authentication. [Xendit payment setup](https://docs.xendit.co/docs/payments-integration-setup)
 2. Save the values below as Supabase Edge Function secrets. Keep the keys out of Flutter and Git. [GoMigo Edge Function Secrets](https://supabase.com/dashboard/project/gkwdczvsmyrnqkaqjnfc/functions/secrets) [Supabase secrets guide](https://supabase.com/docs/guides/functions/secrets)
 
 | Secret | Value |

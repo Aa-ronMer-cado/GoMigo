@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../device_location.dart';
+import 'booking_location_sharing.dart';
 import 'meetup_map.dart';
 import 'meetup_repository.dart';
 
@@ -36,7 +37,8 @@ class BookingMeetupScreen extends StatefulWidget {
     Map<String, dynamic> booking,
     Map<String, dynamic>? session,
     VoidCallback refresh,
-  )? tripControls;
+  )?
+  tripControls;
   final bool showSessionFirst;
   final VoidCallback? onChat;
   final Widget? navigation;
@@ -74,11 +76,9 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
   bool _available = true;
   bool _disposed = false;
   bool _foreground = true;
-  bool _sharing = false;
   bool _recording = false;
   bool _enabling = false;
   bool _syncingStops = false;
-  bool _clearLocation = false;
   bool _clearRecording = false;
   int _trackingGeneration = 0;
   int _ticks = 0;
@@ -121,8 +121,10 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
       _redraw(); // A remote marker can expire without a database change.
       if (++_ticks % 3 == 0 && (!_liveConnected || _dataMessage != null)) {
         unawaited(_refresh());
+      } else if (_canShare) {
+        unawaited(_refreshLocations());
       }
-      if (_clearLocation || _clearRecording) unawaited(_syncStops());
+      if (_clearRecording) unawaited(_syncStops());
       _capture();
     });
   }
@@ -132,7 +134,7 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
     if (state == AppLifecycleState.resumed) {
       _foreground = true;
       unawaited(_refresh());
-      if (_clearLocation || _clearRecording) unawaited(_syncStops());
+      if (_clearRecording) unawaited(_syncStops());
     } else if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -198,6 +200,17 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
     }
   }
 
+  Future<void> _refreshLocations() async {
+    try {
+      for (final row in await _repository.locations()) {
+        if (_isActive && _canShare) _updateLocation(row);
+      }
+      _redraw();
+    } catch (_) {
+      // Realtime and later polls can refresh the markers. Stale markers expire.
+    }
+  }
+
   void _onChange(String table, Map<String, dynamic> row) {
     if (!_isActive || !_available || row.isEmpty) return;
     switch (table) {
@@ -228,20 +241,15 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
   }
 
   void _enforceBookingState() {
-    final stopSharing = _sharing && !_canShare;
-    final stopRecording = _recording && !_canRecord;
-    if (stopSharing || stopRecording)
-      _stop(sharing: stopSharing, recording: stopRecording);
+    if (_recording && !_canRecord) _stop();
   }
 
-  Future<void> _toggle({required bool enabled, required bool recording}) async {
+  Future<void> _toggleRecording(bool enabled) async {
     if (!enabled) {
-      _stop(sharing: !recording, recording: recording);
+      _stop();
       return;
     }
-    if (_enabling || !_foreground || (recording ? !_canRecord : !_canShare)) {
-      return;
-    }
+    if (_enabling || !_foreground || !_canRecord) return;
     final generation = _trackingGeneration;
     _enabling = true;
     _trackingMessage = null;
@@ -250,43 +258,38 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
         _isActive &&
         _foreground &&
         generation == _trackingGeneration &&
-        (recording ? _canRecord : _canShare);
+        _canRecord;
     try {
       await _syncStops();
       if (!stillAllowed()) return;
-      if (_clearLocation || _clearRecording || _syncingStops) {
+      if (_clearRecording || _syncingStops) {
         _trackingMessage =
-            'Reconnect to finish stopping the previous location update.';
+            'Reconnect to finish stopping the previous route recording.';
         return;
       }
       await requireDeviceLocation();
       if (!stillAllowed()) return;
-      if (recording) {
-        try {
-          await _repository.setRecording(true);
-        } catch (_) {
-          _clearRecording = true;
-          unawaited(_syncStops());
-          rethrow;
-        }
-        if (!stillAllowed()) {
-          _clearRecording = true;
-          unawaited(_syncStops());
-          return;
-        }
-        _recording = true;
-        _lastRecordedPoint = null;
-      } else {
-        _sharing = true;
+      try {
+        await _repository.setRecording(true);
+      } catch (_) {
+        _clearRecording = true;
+        unawaited(_syncStops());
+        rethrow;
       }
+      if (!stillAllowed()) {
+        _clearRecording = true;
+        unawaited(_syncStops());
+        return;
+      }
+      _recording = true;
+      _lastRecordedPoint = null;
       _capture();
     } on DeviceLocationException catch (error) {
       if (stillAllowed()) _trackingMessage = error.message;
     } catch (_) {
       if (stillAllowed()) {
-        _trackingMessage = recording
-            ? 'Could not start route recording. Check your connection and try again.'
-            : 'Could not use your location. Check your device settings and try again.';
+        _trackingMessage =
+            'Could not start route recording. Check your connection and try again.';
       }
     } finally {
       _enabling = false;
@@ -294,47 +297,29 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
     }
   }
 
-  void _stop({bool sharing = true, bool recording = true}) {
+  void _stop() {
     _trackingGeneration++;
-    if (sharing && _sharing) {
-      _sharing = false;
-      _clearLocation = true;
-      _locations.remove(_viewer);
-    }
-    if (recording && _recording) {
+    if (_recording) {
       _recording = false;
       _clearRecording = true;
       _unconfirmedPoint = null;
     }
-    if (!_sharing && !_recording) _trackingMessage = null;
+    _trackingMessage = null;
     _redraw();
-    if (_clearLocation || _clearRecording) unawaited(_syncStops());
+    if (_clearRecording) unawaited(_syncStops());
   }
 
   Future<void> _syncStops() async {
-    if (_syncingStops || (!_clearLocation && !_clearRecording)) return;
+    if (_syncingStops || !_clearRecording) return;
     _syncingStops = true;
     try {
       await _captureInFlight;
-      if (_clearLocation) {
-        try {
-          await _repository.setLocation(null);
-          _clearLocation = false;
-        } catch (_) {
-          _stopMessage =
-              'Sharing stopped on this device. The last shared marker will expire shortly.';
-        }
-      }
-      if (_clearRecording) {
-        try {
-          await _repository.setRecording(false);
-          _clearRecording = false;
-        } catch (_) {
-          _stopMessage =
-              'Recording stopped on this device. The stop will sync when you reconnect.';
-        }
-      }
-      if (!_clearLocation && !_clearRecording) _stopMessage = null;
+      await _repository.setRecording(false);
+      _clearRecording = false;
+      _stopMessage = null;
+    } catch (_) {
+      _stopMessage =
+          'Recording stopped on this device. The stop will sync when you reconnect.';
     } finally {
       _syncingStops = false;
       _redraw();
@@ -342,9 +327,7 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
   }
 
   void _capture() {
-    if (!_foreground ||
-        _captureInFlight != null ||
-        (!_sharing && !_recording)) {
+    if (!_foreground || _captureInFlight != null || !_recording) {
       return;
     }
     _captureInFlight = _saveCurrentPosition().whenComplete(
@@ -356,16 +339,17 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
   Future<void> _saveCurrentPosition() async {
     Position position;
     try {
+      await requireDeviceLocation(requestPermission: false);
       position = await readDevicePosition();
     } catch (_) {
-      if (_isActive && (_sharing || _recording)) {
+      if (_isActive && _recording) {
         _trackingMessage =
             'Waiting for GPS. Check location access or move into an open area.';
         _redraw();
       }
       return;
     }
-    if (!_isActive || !_foreground || (!_sharing && !_recording)) return;
+    if (!_isActive || !_foreground || !_recording) return;
     if (!position.accuracy.isFinite ||
         position.accuracy > 100 ||
         position.timestamp.difference(DateTime.now()).abs() >
@@ -377,13 +361,6 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
 
     final point = LatLng(position.latitude, position.longitude);
     var networkError = false;
-    if (_sharing && _canShare) {
-      try {
-        await _repository.setLocation(point);
-      } catch (_) {
-        networkError = true;
-      }
-    }
     if (_isActive && _foreground && _recording && _canRecord) {
       final previous = _lastRecordedPoint;
       if (_unconfirmedPoint == null &&
@@ -401,7 +378,7 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
         }
       }
     }
-    if (_isActive && (_sharing || _recording)) {
+    if (_isActive && _recording) {
       _trackingMessage = networkError
           ? 'Could not send the location update. Retrying while this map is open.'
           : null;
@@ -409,29 +386,54 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
     }
   }
 
+  bool get _showsSharedSelf {
+    final row = _locations[_viewer];
+    return _canShare &&
+        row != null &&
+        meetupCoordinates(row) != null &&
+        DateTime.now().difference(DateTime.parse(row['updated_at'] as String)) <
+            livePositionLifetime;
+  }
+
   List<Marker> _markers(LatLng meeting) {
     final now = DateTime.now();
-    return [
-      meetupMarker(meeting, Icons.location_on, _rust, 'Meeting point'),
+    final live = {
       if (_canShare)
         for (final row in _locations.values)
           if (now.difference(DateTime.parse(row['updated_at'] as String)) <
-                  livePositionLifetime &&
-              row['participant_id'] != _viewer)
+              livePositionLifetime)
             if (meetupCoordinates(row) case final point?)
-              meetupMarker(
-                point,
-                Icons.person_pin_circle,
-                row['participant_id'] == _booking['traveler_id']
-                    ? _travelerColor
-                    : _amigoColor,
-                row['participant_id'] == _viewer
-                    ? 'Your location'
-                    : widget.amigoView
-                        ? 'Traveler location'
-                        : 'Amigo location',
-              ),
+              row['participant_id']: point,
+    };
+    final markers = [
+      meetupMarker(meeting, Icons.location_on, _rust, 'Meeting point'),
     ];
+    for (final entry in live.entries) {
+      final traveler = entry.key == _booking['traveler_id'];
+      final overlaps =
+          entry.value == meeting ||
+          live.entries.any(
+            (other) => other.key != entry.key && other.value == entry.value,
+          );
+      markers.add(
+        meetupMarker(
+          entry.value,
+          traveler ? Icons.person_pin_circle : Icons.explore,
+          traveler ? _travelerColor : _amigoColor,
+          entry.key == _viewer
+              ? 'Your location'
+              : traveler
+              ? 'Traveler location'
+              : 'Amigo location',
+          alignment: overlaps
+              ? traveler
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight
+              : null,
+        ),
+      );
+    }
+    return markers;
   }
 
   List<Polyline> _routes() {
@@ -508,20 +510,28 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
       MediaQuery.sizeOf(context).width >= 360 &&
       MediaQuery.textScalerOf(context).scale(20) <= 24;
 
-  Widget _mapSurface(BuildContext context, BoxConstraints constraints,
-      LatLng meeting, List<Polyline> routes) {
+  Widget _mapSurface(
+    BuildContext context,
+    BoxConstraints constraints,
+    LatLng meeting,
+    List<Polyline> routes,
+  ) {
     final map = MeetupMap(
       center: meeting,
       controller: _mapController,
       markers: _markers(meeting),
+      showDeviceMarker: !_showsSharedSelf,
       routes: routes,
-      locationControlsTop: widget.amigoView &&
+      locationRequired: widget.amigoView && _booking['status'] == 'accepted',
+      locationControlsTop:
+          widget.amigoView &&
               _session == null &&
               _booking['status'] == 'accepted'
           ? 115
           : 10,
-      userAgentPackageName:
-          widget.amigoView ? 'com.gomigo.amigo' : 'com.gomigo.traveler',
+      userAgentPackageName: widget.amigoView
+          ? 'com.gomigo.amigo'
+          : 'com.gomigo.traveler',
     );
     final withOverlays = widget.amigoView && _useMapOverlays(context);
     final height = withOverlays
@@ -541,8 +551,10 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
                     top: 14,
                     child: _MeetupCard(
                       color: Colors.white,
-                      child: Text('Meet ${widget.companionName}',
-                          style: Theme.of(context).textTheme.titleLarge),
+                      child: Text(
+                        'Meet ${widget.companionName}',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
                   ),
                 Positioned(
@@ -650,49 +662,37 @@ class _BookingMeetupScreenState extends State<BookingMeetupScreen>
   }
 
   Widget _trackingControls() => _MeetupCard(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!_loaded && _refreshing) const LinearProgressIndicator(),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Share my location'),
-              subtitle: Text(
-                _canShare
-                    ? (widget.amigoView
-                        ? 'Visible to your traveler while this map is open.'
-                        : 'Visible to your Amigo while this map is open.')
-                    : 'Available near the time of an accepted booking.',
-              ),
-              value: _sharing,
-              onChanged: _enabling || !_canShare
-                  ? null
-                  : (value) => _toggle(enabled: value, recording: false),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Record my trip route'),
-              subtitle: Text(
-                _canRecord
-                    ? 'Saves your route to trip history while this map is open.'
-                    : 'Available during an active session.',
-              ),
-              value: _recording,
-              onChanged: _enabling || !_canRecord
-                  ? null
-                  : (value) => _toggle(enabled: value, recording: true),
-            ),
-            if (_enabling) const LinearProgressIndicator(),
-            if (!_liveConnected && _loaded)
-              const Text('Live updates interrupted. Checking for changes…'),
-            if (_trackingMessage case final message?)
-              Semantics(liveRegion: true, child: Text(message)),
-            if (_stopMessage case final message?)
-              Semantics(liveRegion: true, child: Text(message)),
-          ],
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!_loaded && _refreshing) const LinearProgressIndicator(),
+        if (_loaded && _available)
+          BookingLocationConsent(
+            booking: _booking,
+            amigoView: widget.amigoView,
+          ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Record my trip route'),
+          subtitle: Text(
+            _canRecord
+                ? 'Saves your route to trip history while this map is open.'
+                : 'Available during an active session.',
+          ),
+          value: _recording,
+          onChanged: _enabling || !_canRecord ? null : _toggleRecording,
         ),
-      );
+        if (_enabling) const LinearProgressIndicator(),
+        if (!_liveConnected && _loaded)
+          const Text('Live updates interrupted. Checking for changes…'),
+        if (_trackingMessage case final message?)
+          Semantics(liveRegion: true, child: Text(message)),
+        if (_stopMessage case final message?)
+          Semantics(liveRegion: true, child: Text(message)),
+      ],
+    ),
+  );
 }
 
 const _cream = Color(0xFFFFF8F0);
@@ -702,24 +702,25 @@ String _pesos(Object? cents) =>
     '₱${((cents as num? ?? 0) / 100).toStringAsFixed(2)}';
 
 class _MeetupCard extends StatelessWidget {
-  const _MeetupCard(
-      {required this.child,
-      this.padding = const EdgeInsets.all(16),
-      this.color = _cream});
+  const _MeetupCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.color = _cream,
+  });
   final Widget child;
   final EdgeInsets padding;
   final Color color;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: const Color(0xFFD9C7B6)),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: child,
-      );
+    padding: padding,
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: const Color(0xFFD9C7B6)),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: child,
+  );
 }
 
 class _MeetupError extends StatelessWidget {
@@ -729,16 +730,16 @@ class _MeetupError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(message, textAlign: TextAlign.center),
-              if (onRetry != null)
-                TextButton(onPressed: onRetry, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          if (onRetry != null)
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    ),
+  );
 }

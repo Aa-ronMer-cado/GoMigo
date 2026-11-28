@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gomigo_design_system/gomigo_design_system.dart';
+import 'package:gomigo_shared_widgets/meetup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -46,7 +47,7 @@ class _GoMigoAppState extends State<GoMigoApp> {
           setState(() {
             _user = user;
             if (user != null) _accountNotice = null;
-            _step = 2;
+            _step = user == null ? 1 : 2;
           });
       },
       onError: (Object _) {
@@ -79,6 +80,7 @@ class _GoMigoAppState extends State<GoMigoApp> {
         1 => LocationScreen(onContinue: () => setState(() => _step = 2)),
         _ => LoginScreen(
           accountNotice: _accountNotice,
+          onLocationUnavailable: () => setState(() => _step = 1),
           account: widget.client == null
               ? null
               : AccountRepository(widget.client!),
@@ -93,6 +95,9 @@ class _GoMigoAppState extends State<GoMigoApp> {
     debugShowCheckedModeBanner: false,
     title: 'GoMigo Traveler',
     theme: goMigoTheme(),
+    builder: (_, child) => _user == null
+        ? child!
+        : BookingLocationScope(client: widget.client!, child: child!),
     home: _user == null
         ? _guest()
         : _TravelerHome(

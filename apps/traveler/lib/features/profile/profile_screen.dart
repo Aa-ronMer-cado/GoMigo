@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:gomigo_shared_widgets/password_settings.dart';
 
 import '../../navigation/traveler_ui.dart';
 import '../authentication/account_repository.dart';
@@ -175,8 +176,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     'profile_settings',
                     'Settings',
                     () => _open(
-                      () =>
-                          _SettingsScreen(onWalkthrough: widget.onWalkthrough),
+                      () => _SettingsScreen(
+                        account: widget.account,
+                        onWalkthrough: widget.onWalkthrough,
+                      ),
                     ),
                   ),
                   _tile(
@@ -236,7 +239,8 @@ class _EditNameState extends State<_EditName> {
 }
 
 class _SettingsScreen extends StatelessWidget {
-  const _SettingsScreen({required this.onWalkthrough});
+  const _SettingsScreen({required this.account, required this.onWalkthrough});
+  final AccountRepository account;
   final VoidCallback onWalkthrough;
 
   @override
@@ -249,6 +253,10 @@ class _SettingsScreen extends StatelessWidget {
           padding: EdgeInsets.zero,
           child: Column(
             children: [
+              Material(
+                type: MaterialType.transparency,
+                child: PasswordSettingsTile(auth: account.client.auth),
+              ),
               ListTile(
                 title: const Text('Location permission'),
                 subtitle: const Text(

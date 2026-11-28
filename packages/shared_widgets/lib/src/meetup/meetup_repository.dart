@@ -42,10 +42,7 @@ class MeetupRepository {
           .select('started_at,ended_at')
           .eq('booking_id', bookingId)
           .maybeSingle(),
-      client
-          .from('booking_locations')
-          .select('participant_id,latitude,longitude,updated_at')
-          .eq('booking_id', bookingId),
+      locations(),
     ]);
     return (
       booking: results[0] as Map<String, dynamic>?,
@@ -54,10 +51,15 @@ class MeetupRepository {
     );
   }
 
+  Future<List<Map<String, dynamic>>> locations() => client
+      .from('booking_locations')
+      .select('participant_id,latitude,longitude,updated_at')
+      .eq('booking_id', bookingId);
+
   Future<List<Map<String, dynamic>>> routePoints() async {
     const pageSize = 400;
     final points = <Map<String, dynamic>>[];
-    for (var offset = 0;; offset += pageSize) {
+    for (var offset = 0; ; offset += pageSize) {
       final page = await client
           .from('booking_route_points')
           .select('id,participant_id,latitude,longitude,recorded_at')

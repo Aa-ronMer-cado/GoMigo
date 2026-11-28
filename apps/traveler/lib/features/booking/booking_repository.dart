@@ -2,6 +2,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../discovery/amigo_photo.dart';
+import '../discovery/discovery_repository.dart';
 
 typedef BookingRow = Map<String, dynamic>;
 
@@ -33,6 +34,26 @@ class BookingRepository {
   Future<List<BookingRow>> amigos() async {
     final rows = await client.from('amigo_profiles').select();
     return rows.map((row) => resolveAmigoPhoto(client, row)).toList();
+  }
+
+  Future<Map<String, double>> amigoRatings() async {
+    try {
+      final rows = await DiscoveryRepository(client).reviews();
+      final ratings = <String, List<num>>{};
+      for (final row in rows) {
+        if (row['amigo_id'] case final String id) {
+          if (row['rating'] case final num value) {
+            (ratings[id] ??= []).add(value);
+          }
+        }
+      }
+      return {
+        for (final entry in ratings.entries)
+          entry.key: entry.value.reduce((a, b) => a + b) / entry.value.length,
+      };
+    } catch (_) {
+      return {};
+    }
   }
 
   Future<bool> verified() async {

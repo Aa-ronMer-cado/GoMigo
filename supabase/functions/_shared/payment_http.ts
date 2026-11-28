@@ -11,10 +11,12 @@ export const cors = {
 
 export class PaymentError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -42,7 +44,9 @@ export async function handle(operation: () => Promise<Response>): Promise<Respon
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof PaymentError) return json({ error: error.message }, error.status);
+    if (error instanceof PaymentError) {
+      return json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
+    }
     return json({ error: 'Test payment service is temporarily unavailable.' }, 503);
   }
 }

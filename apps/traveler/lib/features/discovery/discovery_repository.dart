@@ -10,11 +10,10 @@ class DiscoveryRepository {
     final rows = await client
         .from('amigo_profiles')
         .select()
+        .eq('verified', true)
+        .eq('available', true)
         .order('display_name');
-    return rows
-        .where((row) => row['available'] != false)
-        .map((row) => resolveAmigoPhoto(client, row))
-        .toList();
+    return rows.map((row) => resolveAmigoPhoto(client, row)).toList();
   }
 
   Future<Set<String>> favorites() async {

@@ -21,7 +21,7 @@ This guide describes the implementation in the working tree and the rules for ch
 
 Use the same Supabase URL and publishable key in each client's ignored local configuration. Each account has one role. Use separate email addresses for Traveler and Amigo accounts, and provision dedicated reviewer accounts through a project administrator.
 
-Use test accounts, fictional or authorized test IDs, and test payments for demos. Automated identity verification, real payment collection, live payouts, routing and ETAs, background tracking, and production hosting require separate setup and decisions. Firebase Cloud Messaging is an option if push notifications are needed while the apps are closed.
+Use fictional or authorized test IDs, and test payments for demos. Automated identity verification, real payment collection, live payouts, routing and ETAs, background tracking, and production hosting require separate setup and decisions. Firebase Cloud Messaging is an option if push notifications are needed while the apps are closed.
 
 ## Repository and folder placement
 

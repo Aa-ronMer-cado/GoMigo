@@ -1,5 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:gomigo_shared_widgets/device_location.dart';
 
 import '../../navigation/traveler_ui.dart';
 
@@ -11,46 +13,65 @@ class LocationScreen extends StatefulWidget {
   State<LocationScreen> createState() => _LocationScreenState();
 }
 
-class _LocationScreenState extends State<LocationScreen> {
+class _LocationScreenState extends State<LocationScreen>
+    with WidgetsBindingObserver {
   bool _busy = false;
-  String? _notice;
+  bool _advanced = false;
+  String? _message;
+  DeviceLocationSettings? _settings;
 
-  Future<void> _request() async {
-    setState(() {
-      _busy = true;
-      _notice = null;
-    });
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_check());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_check());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _check({bool requestPermission = false}) async {
+    if (_busy || _advanced) return;
+    setState(() => _busy = true);
+    String message;
+    DeviceLocationSettings? settings;
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted)
-          setState(
-            () => _notice =
-                'Location services are off. You can continue and turn them on later.',
-          );
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
-        permission = await Geolocator.requestPermission();
+      await requireDeviceLocation(requestPermission: requestPermission);
       if (!mounted) return;
-      if (permission == LocationPermission.always ||
-          permission == LocationPermission.whileInUse) {
-        widget.onContinue();
-      } else {
-        setState(
-          () => _notice =
-              'Location permission is off. You can continue and enable it when you need the map.',
-        );
-      }
+      _advanced = true;
+      widget.onContinue();
+      return;
+    } on DeviceLocationException catch (error) {
+      message = error.message;
+      settings = error.settings;
     } catch (_) {
-      if (mounted)
-        setState(
-          () => _notice =
-              'Location is unavailable on this device. You can continue.',
-        );
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      message = 'Could not check location. Check your settings and try again.';
     }
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _message = message;
+        // Android can report a permanent denial only when a request is made.
+        if (requestPermission ||
+            _settings != DeviceLocationSettings.app ||
+            settings != null) {
+          _settings = settings;
+        }
+      });
+    }
+  }
+
+  Future<void> _openSettings(DeviceLocationSettings settings) async {
+    if (await openDeviceLocationSettings(settings) || !mounted) return;
+    setState(() => _message = 'Open device settings to enable location.');
   }
 
   @override
@@ -100,19 +121,26 @@ class _LocationScreenState extends State<LocationScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    _notice ??
-                        'You can enable location now or when you use the map.',
-                    textAlign: TextAlign.center,
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _message ??
+                          'GoMigo needs your location to find nearby Amigos and meetups.',
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   TravelerButton(
-                    _busy ? 'Checking…' : 'Turn on location service',
-                    _busy ? null : _request,
-                  ),
-                  TextButton(
-                    onPressed: _busy ? null : widget.onContinue,
-                    child: const Text('Continue without location'),
+                    _busy ? 'Checking…' : _settings?.label ?? 'Allow location',
+                    _busy
+                        ? null
+                        : () {
+                            if (_settings case final settings?) {
+                              unawaited(_openSettings(settings));
+                            } else {
+                              unawaited(_check(requestPermission: true));
+                            }
+                          },
                   ),
                 ],
               ),

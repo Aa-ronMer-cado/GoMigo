@@ -30,15 +30,38 @@ class AmigoProfileRepository {
     return profile?['photo_url'] as String?;
   }
 
-  Future<String> uploadPhoto(Uint8List bytes, String mime) async {
-    final extension = mime == 'image/png' ? 'png' : 'jpg';
-    final path =
-        '${client.auth.currentUser!.id}/${const Uuid().v4()}.$extension';
-    await client.storage
-        .from('amigo-photos')
-        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: mime));
-    return path;
+  String newPhotoPath(String mime) {
+    final extension = switch (mime) {
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => 'jpg',
+    };
+    return '${client.auth.currentUser!.id}/${const Uuid().v4()}.$extension';
   }
+
+  Future<void> uploadPhoto(String path, Uint8List bytes, String mime) async {
+    try {
+      await client.storage
+          .from('amigo-photos')
+          .uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(contentType: mime),
+          );
+    } on StorageException catch (error) {
+      final message = error.message.toLowerCase();
+      if (error.statusCode != '409' &&
+          !(error.statusCode == '400' && message.contains('already exists'))) {
+        rethrow;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> update(Map<String, dynamic> changes) =>
+      client.rpc<Map<String, dynamic>>(
+        'update_amigo_profile',
+        params: {'p_changes': changes},
+      );
 
   Future<void> save({
     required String description,

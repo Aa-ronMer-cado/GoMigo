@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:amigo/features/authentication/account_repository.dart';
+import 'package:amigo/features/authentication/login_screen.dart';
 import 'package:amigo/features/profile/edit_profile_screen.dart';
 import 'package:amigo/features/profile/profile_repository.dart';
 import 'package:amigo/features/verification/verification_repository.dart';
@@ -12,6 +14,32 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  testWidgets('Amigo login tells an unconfirmed user how to continue', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AmigoLoginScreen(account: _UnconfirmedAccount())),
+      ),
+    );
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'amigo@example.com');
+    await tester.enterText(fields.at(1), 'test-password');
+    final login = find.widgetWithText(FilledButton, 'Log In');
+    await tester.ensureVisible(login);
+    await tester.tap(login);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Confirm your email using the link we sent, then sign in again.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('profile creation validates and saves on a narrow phone', (
     tester,
   ) async {
@@ -118,7 +146,7 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(find.text('Verification in progress'), findsOneWidget);
-    expect(find.text('Submit test ID'), findsNothing);
+    expect(find.text('Submit ID'), findsNothing);
 
     rows.add([
       {'status': 'rejected', 'rejection_reason': 'Back photo is blurred.'},
@@ -165,6 +193,21 @@ void main() {
 class _UnusedClient implements SupabaseClient {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _UnconfirmedAccount extends AmigoAccountRepository {
+  _UnconfirmedAccount() : super(_UnusedClient());
+
+  @override
+  Future<bool> authenticate({
+    required String email,
+    required String password,
+    String? name,
+    String? phone,
+  }) async => throw const AuthException(
+    'Email not confirmed',
+    code: 'email_not_confirmed',
+  );
 }
 
 class _ProfileRepository extends AmigoProfileRepository {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gomigo_shared_widgets/meetup.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -31,6 +32,7 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
   BookingRow? _quote;
   String _requestId = const Uuid().v4();
   bool _busy = false;
+  bool _shareLocation = false;
   String? _error;
 
   @override
@@ -126,6 +128,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
           notes: _notes.text.trim(),
           requestId: _requestId,
         );
+        if (mounted && _shareLocation) {
+          await BookingLocationConsent.optIn(context, booking);
+        }
         if (mounted) Navigator.pop(context, booking);
       }
     } on PostgrestException catch (error) {
@@ -274,6 +279,15 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
                   _amount('Total', quote['total_centavos']),
                 ],
               ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share my location when accepted'),
+              subtitle: Text(BookingLocationConsent.description('Amigo')),
+              value: _shareLocation,
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _shareLocation = value),
             ),
           ],
           if (_error != null)

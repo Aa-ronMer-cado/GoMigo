@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:gomigo_shared_widgets/meetup.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -76,12 +77,20 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
       if (mounted) notifyTraveler(context, error.message);
     } on FunctionException catch (error) {
       if (mounted) {
-        notifyTraveler(
-          context,
-          error.status == 503
-              ? 'Test checkout is unavailable. Try again later.'
-              : 'Could not update test checkout. Try again.',
-        );
+        final details = error.details;
+        final code = details is Map ? details['code'] : null;
+        final message = switch (code) {
+          'TEST_CHECKOUT_SETUP' =>
+            'Test checkout setup needs attention. Contact the demo organizer.',
+          'TEST_CHECKOUT_REJECTED' =>
+            'Xendit declined this test checkout request. Contact the demo organizer.',
+          'TEST_CHECKOUT_RECONCILING' =>
+            'This test checkout is still being verified. Refresh payment status.',
+          _ when error.status == 409 =>
+            'Checkout is unavailable for this booking. Refresh payment status.',
+          _ => 'Could not update test checkout. Try again.',
+        };
+        notifyTraveler(context, message);
       }
     } catch (_) {
       if (mounted)
@@ -311,6 +320,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen>
                 );
               },
             ),
+            if (status == 'pending' || status == 'accepted')
+              TravelerCard(
+                child: BookingLocationConsent(
+                  booking: _booking,
+                  amigoView: false,
+                ),
+              ),
             if (status == 'accepted') ...[
               Text(
                 'Test payment · ${statusLabel(payment)}',

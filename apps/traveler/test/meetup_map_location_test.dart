@@ -45,4 +45,44 @@ void main() {
       controller.dispose();
     },
   );
+
+  testWidgets('a required meetup stays covered until location is allowed', (
+    tester,
+  ) async {
+    final attempts = <bool>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MeetupMap(
+            center: const LatLng(10.27, 123.94),
+            markers: const [],
+            locationRequired: true,
+            locateDevice: (requestPermission) async {
+              attempts.add(requestPermission);
+              if (!requestPermission) {
+                throw const DeviceLocationException('Location denied');
+              }
+              return const LatLng(10.32, 123.89);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(attempts, [false]);
+    expect(find.text('Location denied'), findsOneWidget);
+    expect(
+      find.byTooltip('Your current location on this device'),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Allow location'));
+    await tester.pumpAndSettle();
+    expect(attempts, [false, true]);
+    expect(find.text('Allow location'), findsNothing);
+    expect(
+      find.byTooltip('Your current location on this device'),
+      findsOneWidget,
+    );
+  });
 }
